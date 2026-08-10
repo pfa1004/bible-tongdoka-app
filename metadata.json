@@ -1,0 +1,6 @@
+{
+  "name": "성경통독 - 안드로이드 성경앱 & BDF 성경연구",
+  "description": "안드로이드 모바일 특화 성경앱: 베들레헴 BDF 성경 파싱, 4개 번역본 비교, 스트롱코드 사전, 1년 완독 플랜, 찬송가, 안드로이드 PWA/APK 지원",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

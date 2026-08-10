@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "ErrorReport": {
+      "title": "ErrorReport",
+      "description": "User reported Bible data error",
+      "type": "object",
+      "properties": {
+        "bookId": { "type": "string", "maxLength": 50 },
+        "bookName": { "type": "string", "maxLength": 50 },
+        "chapter": { "type": "number" },
+        "verseNum": { "type": "number" },
+        "translation": { "type": "string", "maxLength": 20 },
+        "category": { "type": "string", "maxLength": 50 },
+        "currentText": { "type": "string", "maxLength": 1000 },
+        "suggestion": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["접수됨", "검토중", "반영완료"] }
+      },
+      "required": ["bookId", "bookName", "chapter", "verseNum", "translation", "category", "suggestion", "createdAt", "status"]
+    },
+    "FcmToken": {
+      "title": "FcmToken",
+      "description": "Firebase Cloud Messaging token for daily verse push notification",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string", "maxLength": 500 },
+        "notifyTime": { "type": "string", "maxLength": 10 },
+        "category": { "type": "string", "maxLength": 50 },
+        "enabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["token", "notifyTime", "enabled", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/error_reports/{reportId}": {
+      "schema": "ErrorReport",
+      "description": "Global user error reports for Bible text verification"
+    },
+    "/fcm_tokens/{tokenId}": {
+      "schema": "FcmToken",
+      "description": "Registered FCM tokens for daily scripture memorization notifications"
+    }
+  }
+}

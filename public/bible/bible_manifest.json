@@ -1,0 +1,28 @@
+{
+  "files": [
+    {
+      "id": "HKJV",
+      "name": "킹흠정역",
+      "file": "/bible/hkjv.json",
+      "description": "b-data에서 추출한 킹흠정역 66권 완독 성경 데이터"
+    },
+    {
+      "id": "KJV",
+      "name": "킹제임스(KJV1769)",
+      "file": "/bible/kjv.json",
+      "description": "b-data에서 추출한 킹제임스(KJV1769) 66권 완독 성경 데이터"
+    },
+    {
+      "id": "KJV1611",
+      "name": "킹제임스(KJV1611)",
+      "file": "/bible/kjv1611.json",
+      "description": "b-data에서 추출한 킹제임스(KJV1611) 66권 완독 성경 데이터"
+    },
+    {
+      "id": "KRV",
+      "name": "개역한글",
+      "file": "/bible/krv.json",
+      "description": "b-data에서 추출한 개역한글 66권 완독 성경 데이터"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <!-- Open Book Icon -->
+  <path d="M 120 160 C 180 150, 240 170, 256 185 C 272 170, 332 150, 392 160 L 392 360 C 332 350, 272 370, 256 385 C 240 370, 180 350, 120 360 Z" fill="none" stroke="url(#gold)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 256 185 L 256 385" stroke="url(#gold)" stroke-width="16" stroke-linecap="round" />
+  <!-- Cross in Center -->
+  <path d="M 256 100 L 256 150 M 236 120 L 276 120" stroke="#fef08a" stroke-width="12" stroke-linecap="round" />
+  <!-- Character 聖 -->
+  <text x="256" y="300" font-family="'Noto Serif CJK KR', 'Batang', serif" font-size="110" font-weight="bold" fill="#ffffff" text-anchor="middle">聖</text>
+</svg>

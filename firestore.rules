@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidErrorReport(data) {
+      return data.keys().hasAll(['bookId', 'bookName', 'chapter', 'verseNum', 'translation', 'category', 'currentText', 'suggestion', 'createdAt', 'status'])
+        && data.keys().size() == 10
+        && data.bookId is string && data.bookId.size() <= 50
+        && data.bookName is string && data.bookName.size() <= 50
+        && data.chapter is number
+        && data.verseNum is number
+        && data.translation is string && data.translation.size() <= 20
+        && data.category is string && data.category.size() <= 50
+        && data.currentText is string && data.currentText.size() <= 1000
+        && data.suggestion is string && data.suggestion.size() <= 2000
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.status in ['접수됨', '검토중', '반영완료'];
+    }
+
+    function isValidFcmToken(data) {
+      return data.keys().hasAll(['token', 'notifyTime', 'enabled', 'updatedAt'])
+        && data.token is string && data.token.size() <= 500
+        && data.notifyTime is string && data.notifyTime.size() <= 10
+        && data.enabled is bool
+        && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    match /error_reports/{reportId} {
+      allow read: if true;
+      allow create: if isValidId(reportId) && isValidErrorReport(incoming());
+      allow update, delete: if false;
+    }
+
+    match /fcm_tokens/{tokenId} {
+      allow read, create, update: if isValidId(tokenId) && isValidFcmToken(incoming());
+      allow delete: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

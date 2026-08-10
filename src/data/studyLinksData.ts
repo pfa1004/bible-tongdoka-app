@@ -1,0 +1,60 @@
+import { StudyResourceLink } from '../types';
+
+export const STUDY_RESOURCE_LINKS: StudyResourceLink[] = [
+  {
+    id: 's-1',
+    title: '대한성서공회 (Korean Bible Society)',
+    category: '성서공회',
+    description: '공인 성경 번역본(개역개정, 새번역, 공동번역) 관련 원문 해석 및 성경 지도 전문 기관',
+    url: 'https://www.bskorea.or.kr',
+    badge: '공인기관',
+  },
+  {
+    id: 's-2',
+    title: 'Blue Letter Bible (스트롱코드 / 원어분석)',
+    category: '원어/사전',
+    description: '히브리어/헬라어 원어 분해, 스트롱코드 연동 및 각 절별 단어 의미 정밀 검색 서비스',
+    url: 'https://www.blueletterbible.org',
+    badge: '원어사전',
+  },
+  {
+    id: 's-3',
+    title: '성경통독원 (Bible Reading Institute)',
+    category: '통독/주석',
+    description: '연대기별, 구속사별 성경 통독 교재 및 하루 3~4장 통독 가이드 전문 기관',
+    url: 'https://www.biblereading.or.kr',
+    badge: '통독가이드',
+  },
+  {
+    id: 's-4',
+    title: '대한성서공회 성경 역사지도',
+    category: '지리/지도',
+    description: '구약과 신약 주요 사건별 지도, 가드(Gath), 아브라함 이동 경로, 출애굽 여정 및 지형 지명 전문 지도',
+    url: 'https://bible.bskorea.or.kr/resources/study/nkt_maps',
+    badge: '역사지도',
+  },
+  {
+    id: 's-4-2',
+    title: '한국대학생선교회 (KCCC) 사영리 복음전도',
+    category: '전도/사영리',
+    description: '하나님과 사람 사이의 4가지 영적 원리, 구원의 길 및 영접 기도서 공식 안내',
+    url: 'https://kccc.org',
+    badge: '사영리',
+  },
+  {
+    id: 's-5',
+    title: 'BibleGateway (다국어 성경 비교)',
+    category: '통독/주석',
+    description: 'NIV, ESV, NASB 등 세계 주요 번역본 대조 및 병렬 읽기 라이브러리',
+    url: 'https://www.biblegateway.com',
+    badge: '다국어비교',
+  },
+  {
+    id: 's-6',
+    title: 'CGN TV 오디오 성경 서비스',
+    category: '오디오/미디어',
+    description: '고품질 성우 낭독 개역개정 오디오 성경 및 입체 낭독 드라마 성경',
+    url: 'https://www.cgntv.net',
+    badge: '오디오성경',
+  },
+];
