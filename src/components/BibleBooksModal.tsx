@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Book } from '../types';
 import { BIBLE_BOOKS } from '../data/bibleData';
 import { BIBLE_OVERVIEWS, BibleOverview } from '../data/bibleOverviewsData';
@@ -37,10 +37,14 @@ export const BibleBooksModal: React.FC<Props> = ({
   const [activeTestament, setActiveTestament] = useState<'all' | 'OT' | 'NT'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedBookId, setExpandedBookId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setViewMode(initialMode);
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
     }
   }, [isOpen, initialMode]);
 
@@ -78,8 +82,8 @@ export const BibleBooksModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-4xl rounded-3xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-x-0 top-14 bottom-14 z-80 flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xl border-t border-b border-zinc-200 dark:border-zinc-800 overflow-hidden rounded-none animate-in fade-in duration-150">
+      <div className="w-full h-full flex flex-col overflow-hidden rounded-none">
         {/* Modal Top Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-700 via-emerald-600 to-amber-600 text-white flex items-center justify-between shrink-0 shadow-md">
           <div className="flex items-center gap-3">
@@ -200,7 +204,7 @@ export const BibleBooksModal: React.FC<Props> = ({
         </div>
 
         {/* Scrollable Main Content Area */}
-        <div className="p-3 sm:p-5 overflow-y-auto space-y-6 flex-1">
+        <div ref={scrollContainerRef} className="p-3 sm:p-5 overflow-y-auto space-y-6 flex-1">
           {/* OVERVIEW MODE */}
           {viewMode === 'overview' ? (
             <div className="space-y-6">

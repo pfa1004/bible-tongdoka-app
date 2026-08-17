@@ -1,15 +1,15 @@
 {
   "id": "/",
-  "name": "성경통독",
+  "name": "성경통독(1년-완독)",
   "short_name": "성경통독",
-  "description": "오프라인 성경통독 및 안드로이드 BDF 대조 성경 앱",
+  "description": "1년 완독 및 오프라인 성경 연구, 찬송가, 주석, 말씀카드 제작 앱",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#022c22",
-  "theme_color": "#059669",
-  "categories": ["books", "lifestyle"],
+  "orientation": "portrait-primary",
+  "background_color": "#09090b",
+  "theme_color": "#d97706",
+  "categories": ["books", "lifestyle", "education"],
   "icons": [
     {
       "src": "/icon-192.png",

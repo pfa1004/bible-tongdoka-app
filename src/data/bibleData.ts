@@ -4,6 +4,12 @@ import { STRONGS_ENTRIES } from './dictionaryData';
 
 export const TRANSLATIONS: Translation[] = [
   {
+    id: 'KRV',
+    name: '개역한글',
+    shortName: '개역한글',
+    description: '전통 한글 개역한글판 성경 DB입니다.',
+  },
+  {
     id: 'HKJV',
     name: '킹흠정역',
     shortName: '킹흠정역',
@@ -20,12 +26,6 @@ export const TRANSLATIONS: Translation[] = [
     name: '킹제임스(KJV1611)',
     shortName: 'KJV1611',
     description: '영문 King James Version 1611년 초판 성경 DB입니다.',
-  },
-  {
-    id: 'KRV',
-    name: '개역한글',
-    shortName: '개역한글',
-    description: '전통 한글 개역한글판 성경 DB입니다.',
   },
 ];
 
@@ -1478,6 +1478,9 @@ export function searchBibleVerses(
             isMatched = true;
             matchedStr = activeText;
           } else if (strongCodeUpper === 'H1254' && (activeTextLower.includes('창조') || activeTextLower.includes('바라') || activeTextLower.includes('create'))) {
+            isMatched = true;
+            matchedStr = activeText;
+          } else if (strongCodeUpper === 'G2424' && (activeTextLower.includes('예수') || activeTextLower.includes('jesus'))) {
             isMatched = true;
             matchedStr = activeText;
           } else if (strongInfo) {

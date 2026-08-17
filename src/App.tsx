@@ -15,6 +15,7 @@ import { DICTIONARY_ENTRIES } from './data/dictionaryData';
 
 import { Header } from './components/Header';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { BibleTab } from './components/BibleTab';
 import { HymnTab } from './components/HymnTab';
 import { TodayWordTab } from './components/TodayWordTab';
@@ -37,6 +38,7 @@ import {
   DesignPresetId,
   DESIGN_PRESETS,
 } from './components/DesignStyleModal';
+import { FloatingSettingsButton } from './components/FloatingSettingsButton';
 
 import { initCustomBibleStorage } from './utils/customBibleStorage';
 
@@ -52,7 +54,7 @@ export default function App() {
         const found = BIBLE_BOOKS.find((b) => b.id === savedBookId || b.name === savedBookId);
         if (found) return found;
       }
-    } catch (e) {}
+    } catch (e) { }
     return BIBLE_BOOKS[0]; // Genesis default
   });
 
@@ -63,7 +65,7 @@ export default function App() {
         const parsed = parseInt(savedCh, 10);
         if (!isNaN(parsed) && parsed > 0) return parsed;
       }
-    } catch (e) {}
+    } catch (e) { }
     return 1;
   });
 
@@ -74,8 +76,43 @@ export default function App() {
         localStorage.setItem('bible_last_book_id', currentBook.id);
       }
       localStorage.setItem('bible_last_chapter', String(currentChapter));
-    } catch (e) {}
+    } catch (e) { }
   }, [currentBook, currentChapter]);
+
+  // Attempt auto-fullscreen on app launch (and on first user interaction if blocked by browser policy)
+  useEffect(() => {
+    const enterFullscreen = () => {
+      if (!document.fullscreenElement) {
+        const docEl = document.documentElement as any;
+        if (docEl.requestFullscreen) {
+          docEl.requestFullscreen().catch(() => { });
+        } else if (docEl.webkitRequestFullscreen) {
+          docEl.webkitRequestFullscreen();
+        }
+      }
+    };
+
+    // 1. Immediate attempt on page load
+    enterFullscreen();
+
+    // 2. Mobile address bar scroll trick is not needed with 100dvh
+    // window.scrollTo(0, 1);
+
+    // 3. Fallback: Request on first touch/click interaction (browser policy compliant)
+    const handleFirstTouch = () => {
+      enterFullscreen();
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+
+    window.addEventListener('touchstart', handleFirstTouch, { passive: true });
+    window.addEventListener('click', handleFirstTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+  }, []);
 
   // Modal Open States
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -102,11 +139,34 @@ export default function App() {
     mode: 'list',
   });
 
+  const closeOverlappingModals = () => {
+    setBibleBooksModalState((prev) => ({ ...prev, isOpen: false }));
+    setIsReaderSettingsOpen(false);
+    setIsBibleSearchModalOpen(false);
+  };
+
+  const handleTabChange = (tab: Parameters<typeof setActiveTab>[0]) => {
+    closeOverlappingModals();
+    setActiveTab(tab);
+    setTimeout(() => {
+      document.querySelector('main')?.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    }, 10);
+  };
+
   const handleOpenBibleBooksModal = (mode: 'list' | 'overview' = 'list') => {
+    closeOverlappingModals();
     setBibleBooksModalState({ isOpen: true, mode });
+  };
+
+  const handleOpenReaderSettingsModal = () => {
+    closeOverlappingModals();
+    setIsReaderSettingsOpen(true);
   };
   const [isBibleSearchModalOpen, setIsBibleSearchModalOpen] = useState(false);
   const [searchInitialQuery, setSearchInitialQuery] = useState('');
+  const [lastSearchQuery, setLastSearchQuery] = useState<string | null>(null);
+  const [targetVerseNumber, setTargetVerseNumber] = useState<number | null>(null);
   const [isBdfImporterModalOpen, setIsBdfImporterModalOpen] = useState(false);
   const [isAndroidAppModalOpen, setIsAndroidAppModalOpen] = useState(false);
   const [isDailyNotificationOpen, setIsDailyNotificationOpen] = useState(false);
@@ -153,13 +213,13 @@ export default function App() {
     return saved
       ? JSON.parse(saved)
       : {
-          mode: 'sequential',
-          dailyGoalChapters: 3,
-          notificationEnabled: true,
-          notificationTime: '08:00',
-          streakCount: 5,
-          completedDays: [1, 2, 3, 4, 5],
-        };
+        mode: 'sequential',
+        dailyGoalChapters: 3,
+        notificationEnabled: true,
+        notificationTime: '08:00',
+        streakCount: 5,
+        completedDays: [1, 2, 3, 4, 5],
+      };
   });
 
   useEffect(() => {
@@ -176,7 +236,7 @@ export default function App() {
       fontFamily: 'sans',
       showVerseNumbers: true,
       paragraphMode: false,
-      copyFormat: 'standard',
+      copyFormat: 'verse_break',
     };
     try {
       const saved = localStorage.getItem('bible_reader_settings');
@@ -190,10 +250,10 @@ export default function App() {
           fontFamily: parsed.fontFamily || 'sans',
           showVerseNumbers: parsed.showVerseNumbers ?? true,
           paragraphMode: parsed.paragraphMode ?? false,
-          copyFormat: parsed.copyFormat || 'standard',
+          copyFormat: parsed.copyFormat === 'verse_break' || parsed.copyFormat === 'continuous' || parsed.copyFormat === 'with_ref' ? parsed.copyFormat : 'verse_break',
         };
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (typeof document !== 'undefined') {
       if (initial.theme === 'dark') {
@@ -208,7 +268,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('bible_reader_settings', JSON.stringify(readerSettings));
-    } catch (e) {}
+    } catch (e) { }
 
     // Apply theme class to document element
     if (readerSettings.theme === 'dark') {
@@ -244,16 +304,16 @@ export default function App() {
     return saved
       ? JSON.parse(saved)
       : [
-          {
-            id: 'pr-1',
-            title: '1년 성경 완독과 말씀 중심 삶을 위한 기도',
-            content: '매일 아침 3장씩 꾸준히 읽고 하나님의 뜻을 깨닫게 하소서.',
-            category: '개인',
-            isAnswered: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ];
+        {
+          id: 'pr-1',
+          title: '1년 성경 완독과 말씀 중심 삶을 위한 기도',
+          content: '매일 아침 3장씩 꾸준히 읽고 하나님의 뜻을 깨닫게 하소서.',
+          category: '개인',
+          isAnswered: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
   });
 
   useEffect(() => {
@@ -282,7 +342,7 @@ export default function App() {
           const parsed = parseFloat(rawPitch);
           if (!isNaN(parsed) && parsed > 0) savedPitch = parsed;
         }
-      } catch {}
+      } catch { }
     }
     return {
       isPlaying: false,
@@ -310,11 +370,20 @@ export default function App() {
         if (audioState.pitch !== undefined) {
           localStorage.setItem('bible_audio_pitch', String(audioState.pitch));
         }
-      } catch {}
+      } catch { }
     }
   }, [audioState.speed, audioState.voiceURI, audioState.pitch]);
 
   const [isAudioBarOpen, setIsAudioBarOpen] = useState(false);
+
+  const handleToggleAudioPlayer = () => {
+    if (!isAudioBarOpen) {
+      setIsAudioBarOpen(true);
+      setAudioState((prev) => ({ ...prev, isPlaying: true }));
+    } else {
+      setAudioState((prev) => ({ ...prev, isPlaying: !prev.isPlaying }));
+    }
+  };
 
   // Sync audio player book/chapter
   useEffect(() => {
@@ -322,9 +391,16 @@ export default function App() {
       ...prev,
       bookId: currentBook.id,
       chapter: currentChapter,
-      currentVerseIndex: 0,
+      currentVerseIndex: targetVerseNumber && targetVerseNumber > 0 ? Math.max(0, targetVerseNumber - 1) : 0,
     }));
-  }, [currentBook.id, currentChapter]);
+  }, [currentBook.id, currentChapter, targetVerseNumber]);
+
+  const handleUpdateAudioState = (update: Partial<AudioPlayerState>) => {
+    setAudioState((prev) => ({
+      ...prev,
+      ...update,
+    }));
+  };
 
   // User Action Handlers
   const handleToggleHighlight = (
@@ -445,6 +521,14 @@ export default function App() {
     setPrayers(prayers.filter((p) => p.id !== id));
   };
 
+  const handleUpdatePrayer = (id: string, title: string, content: string, category: PrayerNote['category']) => {
+    setPrayers(
+      prayers.map((p) =>
+        p.id === id ? { ...p, title, content, category, updatedAt: new Date().toISOString() } : p
+      )
+    );
+  };
+
   const handleOpenDictionary = (entryOrCode: string, isStrong?: boolean) => {
     if (isStrong) {
       setDictState({ isOpen: true, strongCode: entryOrCode });
@@ -459,18 +543,26 @@ export default function App() {
   };
 
   const handleJumpToPassage = (bookNameOrId: string, chapter: number) => {
+    if (!bookNameOrId) return;
+    const query = bookNameOrId.trim();
     const found = BIBLE_BOOKS.find(
-      (b) => b.id === bookNameOrId || b.name === bookNameOrId
+      (b) =>
+        b.id === query ||
+        b.name === query ||
+        b.shortName === query ||
+        (b as any).aliases?.some((a: string) => a === query) ||
+        b.name.includes(query) ||
+        query.includes(b.name)
     );
     if (found) {
+      const validChapter = Math.min(Math.max(1, chapter || 1), found.chapterCount);
       setCurrentBook(found);
-      setCurrentChapter(chapter);
+      setCurrentChapter(validChapter);
       setActiveTab('bible');
       // Reset scroll position to top when jumping to passage from reading plan
       setTimeout(() => {
-        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
-        if (document.documentElement) document.documentElement.scrollTop = 0;
-        if (document.body) document.body.scrollTop = 0;
+        const mainEl = document.querySelector('main');
+        if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
       }, 50);
     }
   };
@@ -499,7 +591,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('custom_gospel_songs');
       if (saved) customGospels = JSON.parse(saved);
-    } catch {}
+    } catch { }
     const allHymns = [...HYMNS, ...customGospels];
     const currentIndex = allHymns.findIndex((h) => h.id === selectedHymn.id);
     if (currentIndex > 0) {
@@ -514,7 +606,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('custom_gospel_songs');
       if (saved) customGospels = JSON.parse(saved);
-    } catch {}
+    } catch { }
     const allHymns = [...HYMNS, ...customGospels];
     const currentIndex = allHymns.findIndex((h) => h.id === selectedHymn.id);
     if (currentIndex >= 0 && currentIndex < allHymns.length - 1) {
@@ -539,8 +631,8 @@ export default function App() {
     } else if (activeTab === 'hymn') {
       handlePrevHymn();
     }
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof document !== 'undefined') {
+      document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -559,18 +651,53 @@ export default function App() {
     } else if (activeTab === 'hymn') {
       handleNextHymn();
     }
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof document !== 'undefined') {
+      document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const currentVerses = getChapterVerses(currentBook.id, currentChapter);
-  const currentVerseStrings = currentVerses.map((v) => v.text['KRV']);
+
+  // Robust helper to extract exact verse text for selected translation ID
+  const getVerseTextForTranslation = (v: any, selectedId: string): string => {
+    if (!v || !v.text) return '';
+    let targetId = selectedId;
+    if (!targetId) {
+      try {
+        const saved = localStorage.getItem('bible_active_translations_v6') || localStorage.getItem('bible_active_translations_v5');
+        if (saved) {
+          const list = JSON.parse(saved);
+          if (list && list[0]) targetId = list[0];
+        }
+      } catch { }
+    }
+    if (targetId && v.text[targetId]) {
+      return v.text[targetId];
+    }
+    const norm = (targetId || '').trim().toUpperCase();
+    if (norm.includes('HKJV') || norm.includes('킹흠정') || norm.includes('흠정')) {
+      return v.text['HKJV'] || v.text['킹흠정역'] || v.text['KRV'] || '';
+    }
+    if (norm.includes('1611')) {
+      return v.text['KJV1611'] || v.text['킹제임스(KJV1611)'] || v.text['KJV'] || '';
+    }
+    if (norm.includes('KJV') || norm.includes('1769') || norm.includes('킹제임스')) {
+      return v.text['KJV1769'] || v.text['KJV'] || v.text['킹제임스(KJV1769)'] || '';
+    }
+    return v.text['KRV'] || v.text['개역한글'] || (Object.values(v.text)[0] as string) || '';
+  };
+
+  const currentVerseStrings = currentVerses.map((v) =>
+    getVerseTextForTranslation(v, audioState.selectedTranslationId)
+  );
 
   return (
-    <div className={`min-h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors ${isDeviceFrameActive ? 'py-6 px-2 sm:px-4 flex items-center justify-center' : 'pb-16 sm:pb-24'}`}>
-      {/* Android Smartphone Device Frame Wrapper (when isDeviceFrameActive is true) */}
-      <div className={isDeviceFrameActive ? "w-full max-w-[420px] h-[850px] bg-black rounded-[48px] p-3 shadow-2xl ring-1 ring-zinc-800 relative flex flex-col overflow-hidden border-4 border-zinc-700/50" : "w-full min-h-screen flex flex-col pb-16 sm:pb-24"}>
+    <div className={`h-[100dvh] h-screen w-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors ${isDeviceFrameActive ? 'p-2 sm:p-4 items-center justify-center' : ''}`}>
+      {/* PWA Home Screen Install Banner */}
+      <PwaInstallBanner />
+
+      {/* Android Smartphone Device Frame Wrapper (Galaxy Note20 Spec: 412px x 915px) */}
+      <div className={isDeviceFrameActive ? "w-full max-w-[412px] h-[915px] max-h-[95vh] bg-black rounded-[44px] p-3 shadow-2xl ring-1 ring-zinc-800 relative flex flex-col overflow-hidden border-4 border-zinc-700/50" : "w-full h-full flex flex-col overflow-hidden"}>
         {/* Android Top Status Bar (Clock, Camera Hole, Battery, Wi-Fi) */}
         {isDeviceFrameActive && (
           <div className="bg-zinc-900 text-white px-6 pt-2 pb-1 flex items-center justify-between text-[11px] font-mono shrink-0 select-none z-50">
@@ -583,35 +710,44 @@ export default function App() {
           </div>
         )}
 
-        <div className={`flex-1 flex flex-col overflow-y-auto ${isDeviceFrameActive ? 'bg-zinc-50 dark:bg-zinc-950 rounded-[32px] relative overflow-hidden' : ''}`}>
-          {/* Top Navigation & App Header */}
-          <Header
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            planSettings={planSettings}
-            onOpenPlanModal={() => setIsPlanModalOpen(true)}
-            onOpenMapsModal={() => window.open('https://bible.bskorea.or.kr/resources/study/nkt_maps', '_blank')}
-            onOpenFourLawsModal={() => setIsFourLawsModalOpen(true)}
-            onOpenReaderSettingsModal={() => setIsReaderSettingsOpen(true)}
-            onOpenDesignStyleModal={() => setIsDesignStyleModalOpen(true)}
-            onOpenBibleBooksModal={handleOpenBibleBooksModal}
-            onOpenBibleSearchModal={() => setIsBibleSearchModalOpen(true)}
-            onOpenBdfImporterModal={() => setIsBdfImporterModalOpen(true)}
-            onOpenAndroidAppModal={() => setIsAndroidAppModalOpen(true)}
-            onOpenDailyNotificationModal={() => setIsDailyNotificationOpen(true)}
-            activeDesignPreset={activeDesignPreset}
-            audioState={audioState}
-            onToggleAudioPlayer={() => setIsAudioBarOpen(!isAudioBarOpen)}
-          />
+        <div className={`flex-1 flex flex-col h-full overflow-hidden relative ${isDeviceFrameActive ? 'bg-zinc-50 dark:bg-zinc-950 rounded-[32px]' : ''}`}>
+          {/* Fixed Top App Header */}
+          <div className="sticky top-0 left-0 right-0 z-50 shrink-0">
+            <Header
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              planSettings={planSettings}
+              onOpenPlanModal={() => setIsPlanModalOpen(true)}
+              onOpenMapsModal={() => window.open('https://bible.bskorea.or.kr/resources/study/nkt_maps', '_blank')}
+              onOpenFourLawsModal={() => setIsFourLawsModalOpen(true)}
+              onOpenReaderSettingsModal={() => setIsReaderSettingsOpen(true)}
+              onOpenDesignStyleModal={() => setIsDesignStyleModalOpen(true)}
+              onOpenBibleBooksModal={handleOpenBibleBooksModal}
+              onOpenBibleSearchModal={() => setIsBibleSearchModalOpen(true)}
+              onOpenBdfImporterModal={() => setIsBdfImporterModalOpen(true)}
+              onOpenAndroidAppModal={() => setIsAndroidAppModalOpen(true)}
+              onOpenDailyNotificationModal={() => setIsDailyNotificationOpen(true)}
+              activeDesignPreset={activeDesignPreset}
+              audioState={audioState}
+              onToggleAudioPlayer={handleToggleAudioPlayer}
+            />
+          </div>
 
-          {/* Main Container Content */}
-          <main className="w-full max-w-7xl mx-auto px-0 sm:px-6 pt-0 sm:pt-6 flex-1 pb-20">
+          {/* Main Container Content - Remove top padding since flex-col header takes space */}
+          <main className="w-full max-w-7xl mx-auto px-0 sm:px-6 pt-0 flex-1 overflow-y-auto pb-24">
             {activeTab === 'bible' && (
               <BibleTab
                 currentBook={currentBook}
                 currentChapter={currentChapter}
-                onBookChange={setCurrentBook}
-                onChapterChange={setCurrentChapter}
+                targetVerseNumber={targetVerseNumber}
+                onBookChange={(book) => {
+                  setTargetVerseNumber(null);
+                  setCurrentBook(book);
+                }}
+                onChapterChange={(ch) => {
+                  setTargetVerseNumber(null);
+                  setCurrentChapter(ch);
+                }}
                 readerSettings={readerSettings}
                 highlights={highlights}
                 bookmarks={bookmarks}
@@ -626,6 +762,9 @@ export default function App() {
                 onOpenBibleBooksModal={handleOpenBibleBooksModal}
                 onOpenBibleSearchModal={() => setIsBibleSearchModalOpen(true)}
                 openHenryTrigger={openHenryTrigger}
+                audioState={audioState}
+                onToggleAudioPlayer={handleToggleAudioPlayer}
+                onUpdateAudioState={handleUpdateAudioState}
               />
             )}
 
@@ -636,6 +775,7 @@ export default function App() {
                 onPrevHymn={handlePrevHymn}
                 onNextHymn={handleNextHymn}
                 onNavigateToScripture={handleNavigateToScripture}
+                onClose={() => setActiveTab('bible')}
               />
             )}
 
@@ -643,6 +783,7 @@ export default function App() {
               <TodayWordTab
                 initialVerseText={cardVerseTransfer.text}
                 initialScriptureRef={cardVerseTransfer.ref}
+                onClose={() => setActiveTab('bible')}
               />
             )}
 
@@ -652,6 +793,7 @@ export default function App() {
                 bookmarks={bookmarks}
                 prayers={prayers}
                 onAddPrayer={handleAddPrayer}
+                onUpdatePrayer={handleUpdatePrayer}
                 onTogglePrayerAnswered={handleTogglePrayerAnswered}
                 onDeletePrayer={handleDeletePrayer}
                 onDeleteHighlight={(id) => setHighlights(highlights.filter((h) => h.id !== id))}
@@ -693,13 +835,18 @@ export default function App() {
         isOpen={isBibleSearchModalOpen}
         onClose={() => setIsBibleSearchModalOpen(false)}
         initialQuery={searchInitialQuery}
-        onNavigateToVerse={(book, ch, v) => {
+        onNavigateToVerse={(book, ch, v, searchQ) => {
+          if (searchQ) setLastSearchQuery(searchQ);
           setCurrentBook(book);
           setCurrentChapter(ch);
+          setTargetVerseNumber(v);
+          setIsBibleSearchModalOpen(false);
           setActiveTab('bible');
         }}
-        onCreateVerseCard={(verseText, refText) => {
+        onCreateVerseCard={(verseText, refText, searchQ) => {
+          if (searchQ) setLastSearchQuery(searchQ);
           setCardVerseTransfer({ text: verseText, ref: refText });
+          setIsBibleSearchModalOpen(false);
           setActiveTab('today');
         }}
       />
@@ -760,6 +907,7 @@ export default function App() {
           onUpdateState={(newS) => setAudioState({ ...audioState, ...newS })}
           currentBook={currentBook}
           currentChapterVerses={currentVerseStrings}
+          versesData={currentVerses}
           onVerseChange={(idx) =>
             setAudioState((prev) => ({ ...prev, currentVerseIndex: idx }))
           }
@@ -804,21 +952,27 @@ export default function App() {
         onClose={() => setIsBibleIntegrityModalOpen(false)}
       />
 
+
       {/* Mobile Bottom Navigation Bar */}
       <MobileBottomNav
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         onOpenDesignStyleModal={() => setIsDesignStyleModalOpen(true)}
-        onOpenReaderSettingsModal={() => setIsReaderSettingsOpen(true)}
+        onOpenReaderSettingsModal={handleOpenReaderSettingsModal}
         onOpenPlanModal={() => setIsPlanModalOpen(true)}
         onOpenMapsModal={() => window.open('https://bible.bskorea.or.kr/resources/study/nkt_maps', '_blank')}
         onOpenBibleBooksModal={handleOpenBibleBooksModal}
         onOpenBibleSearchModal={() => setIsBibleSearchModalOpen(true)}
         onOpenBdfImporterModal={() => setIsBdfImporterModalOpen(true)}
         onOpenAndroidAppModal={() => setIsAndroidAppModalOpen(true)}
+        onOpenFourLawsModal={() => setIsFourLawsModalOpen(true)}
         audioState={audioState}
-        onToggleAudioPlayer={() => setIsAudioBarOpen(!isAudioBarOpen)}
-        onOpenHenryCommentary={() => setOpenHenryTrigger((prev) => prev + 1)}
+        onToggleAudioPlayer={handleToggleAudioPlayer}
+        onOpenHenryCommentary={() => {
+          closeOverlappingModals();
+          setActiveTab('bible');
+          setOpenHenryTrigger((prev) => prev + 1);
+        }}
         onPrev={handleGlobalPrev}
         onNext={handleGlobalNext}
       />

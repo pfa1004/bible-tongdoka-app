@@ -2,6 +2,22 @@ import { StudyResourceLink } from '../types';
 
 export const STUDY_RESOURCE_LINKS: StudyResourceLink[] = [
   {
+    id: 's-shelter-1',
+    title: '성경과학 입문강의',
+    category: '오디오/미디어',
+    description: '왜 창조인가?, 노아의 홍수, 그랜드캐년의비밀, 기적과영혼, 인류의 기원, 한자와 창세기, 화석의 증거, 공룡과 성경, 열역학법칙...',
+    url: 'https://www.youtube.com',
+    badge: '153쉴터',
+  },
+  {
+    id: 's-shelter-2',
+    title: '다시보는 명강의',
+    category: '오디오/미디어',
+    description: '6천년 성경연대기의 정확성, 다니엘연대기, 하나님은 누구신가? .....',
+    url: 'https://www.youtube.com',
+    badge: '153쉴터교회',
+  },
+  {
     id: 's-1',
     title: '대한성서공회 (Korean Bible Society)',
     category: '성서공회',
@@ -18,43 +34,11 @@ export const STUDY_RESOURCE_LINKS: StudyResourceLink[] = [
     badge: '원어사전',
   },
   {
-    id: 's-3',
-    title: '성경통독원 (Bible Reading Institute)',
-    category: '통독/주석',
-    description: '연대기별, 구속사별 성경 통독 교재 및 하루 3~4장 통독 가이드 전문 기관',
-    url: 'https://www.biblereading.or.kr',
-    badge: '통독가이드',
-  },
-  {
     id: 's-4',
     title: '대한성서공회 성경 역사지도',
     category: '지리/지도',
     description: '구약과 신약 주요 사건별 지도, 가드(Gath), 아브라함 이동 경로, 출애굽 여정 및 지형 지명 전문 지도',
     url: 'https://bible.bskorea.or.kr/resources/study/nkt_maps',
     badge: '역사지도',
-  },
-  {
-    id: 's-4-2',
-    title: '한국대학생선교회 (KCCC) 사영리 복음전도',
-    category: '전도/사영리',
-    description: '하나님과 사람 사이의 4가지 영적 원리, 구원의 길 및 영접 기도서 공식 안내',
-    url: 'https://kccc.org',
-    badge: '사영리',
-  },
-  {
-    id: 's-5',
-    title: 'BibleGateway (다국어 성경 비교)',
-    category: '통독/주석',
-    description: 'NIV, ESV, NASB 등 세계 주요 번역본 대조 및 병렬 읽기 라이브러리',
-    url: 'https://www.biblegateway.com',
-    badge: '다국어비교',
-  },
-  {
-    id: 's-6',
-    title: 'CGN TV 오디오 성경 서비스',
-    category: '오디오/미디어',
-    description: '고품질 성우 낭독 개역개정 오디오 성경 및 입체 낭독 드라마 성경',
-    url: 'https://www.cgntv.net',
-    badge: '오디오성경',
   },
 ];

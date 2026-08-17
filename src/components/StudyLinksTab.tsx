@@ -28,7 +28,7 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
   const [links, setLinks] = useState<StudyResourceLink[]>(() => {
     if (typeof window !== 'undefined' && localStorage) {
       try {
-        const saved = localStorage.getItem('bible_study_resource_links_v2');
+        const saved = localStorage.getItem('bible_study_resource_links_v4');
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -45,7 +45,7 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
     if (typeof window !== 'undefined' && localStorage) {
       try {
         localStorage.setItem(
-          'bible_study_resource_links_v2',
+          'bible_study_resource_links_v4',
           JSON.stringify(links)
         );
       } catch {}
@@ -243,7 +243,7 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header Banner */}
       <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative">
         <div className="pr-10 sm:pr-0">
@@ -290,7 +290,7 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
         {/* Category Pills - Wrap on Mobile, Drag Scrollable on Desktop */}
         <div
           ref={categoriesRef}
@@ -298,7 +298,7 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
           onMouseMove={handleCatMouseMove}
           onMouseUp={handleCatMouseUp}
           onMouseLeave={handleCatMouseUp}
-          className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-2 overflow-x-auto w-full sm:w-auto pb-1.5 select-none touch-pan-x [&::-webkit-scrollbar]:hidden"
+          className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-2 overflow-x-auto w-full sm:w-auto pb-1 select-none touch-pan-x [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {categories.map((cat) => (
@@ -352,7 +352,7 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
           {filteredLinks.map((item, index) => {
             const isFirst = index === 0;
             const isLast = index === filteredLinks.length - 1;
@@ -360,11 +360,11 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
             return (
               <div
                 key={item.id}
-                className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-amber-500/80 hover:shadow-md transition-all group flex flex-col justify-between relative"
+                className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-amber-500/80 hover:shadow-md transition-all group flex flex-col justify-between relative"
               >
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-500/20">
+                    <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-500/20">
                       {item.badge}
                     </span>
 
@@ -425,17 +425,17 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-bold text-base text-zinc-900 dark:text-zinc-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-1"
+                      className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-1"
                     >
                       {item.title}
                     </a>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed mt-1 line-clamp-2">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed mt-0.5 line-clamp-2">
                       {item.description}
                     </p>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
+                <div className="pt-2.5 mt-2.5 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
                   <span className="truncate max-w-[170px]">{item.url}</span>
                   <a
                     href={item.url}
@@ -454,8 +454,8 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
 
       {/* Add Custom Link Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 sm:pt-12 bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white p-4 sm:p-5 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-3 max-h-[85vh] overflow-y-auto my-auto">
             <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <Globe className="w-5 h-5 text-amber-500" />
@@ -584,8 +584,8 @@ export const StudyLinksTab: React.FC<StudyLinksTabProps> = ({ onClose }) => {
 
       {/* Edit Link Modal */}
       {editingLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 sm:pt-12 bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white p-4 sm:p-5 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-3 max-h-[85vh] overflow-y-auto my-auto">
             <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <Pencil className="w-5 h-5 text-amber-500" />

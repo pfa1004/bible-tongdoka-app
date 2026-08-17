@@ -48,6 +48,7 @@ export interface HymnTabProps {
   onPrevHymn?: () => void;
   onNextHymn?: () => void;
   onNavigateToScripture?: (scriptureRef: string) => void;
+  onClose?: () => void;
 }
 
 export const HymnTab: React.FC<HymnTabProps> = ({
@@ -56,6 +57,7 @@ export const HymnTab: React.FC<HymnTabProps> = ({
   onPrevHymn,
   onNextHymn,
   onNavigateToScripture,
+  onClose,
 }) => {
   const [isBannerVisible, setIsBannerVisible] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -331,6 +333,17 @@ export const HymnTab: React.FC<HymnTabProps> = ({
     setActiveVerseIndex(null);
   }, [selectedHymn]);
 
+  // Scroll to top when HymnTab mounts or selectedHymn/mobileViewMode/selectedType changes
+  useEffect(() => {
+    const resetScroll = () => {
+      document.querySelector('main')?.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    };
+    resetScroll();
+    const timer = setTimeout(resetScroll, 30);
+    return () => clearTimeout(timer);
+  }, [selectedHymn.id, mobileViewMode, selectedType]);
+
   // Filter Hymns
   const filteredHymns = useMemo(() => {
     return allHymns.filter((h) => {
@@ -522,112 +535,121 @@ export const HymnTab: React.FC<HymnTabProps> = ({
   }, [selectedHymn]);
 
   return (
-    <div className="space-y-2.5">
-      {/* Header Banner */}
-      {isBannerVisible && (
-        <div className="relative p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5">
-          {/* Banner Close Button */}
+    <div className="space-y-1.5 p-0">
+      {/* Sticky Fixed Header Controls (Banner & Search & Navigation Bar) */}
+      <div className="sticky top-0 z-30 bg-zinc-100 dark:bg-zinc-950 pt-1 pb-1.5 space-y-1.5 backdrop-blur-md">
+        {/* Header Banner */}
+        {isBannerVisible && (
+          <div className="relative p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5">
+            {/* Banner Close Button */}
+            <button
+              onClick={() => {
+                if (onClose) {
+                  onClose();
+                } else {
+                  setIsBannerVisible(false);
+                }
+              }}
+              title="창 닫기"
+              className="absolute top-2.5 right-2.5 p-1 rounded-full bg-black/20 hover:bg-black/40 text-amber-100 hover:text-white transition-all cursor-pointer z-10"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="pr-6">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <Music className="w-5 h-5 animate-pulse" />
+                <h2 className="text-lg sm:text-xl font-extrabold font-serif leading-tight">
+                  찬송가 & 가스펠 CCM
+                </h2>
+              </div>
+              <p className="text-xs text-amber-100 font-medium leading-tight">
+                새찬송가 645곡, 가스펠ccm
+              </p>
+            </div>
+
+            {/* Type Switcher & Add Button aligned side-by-side in a single row */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none shrink-0 max-w-full">
+              <div className="flex items-center bg-black/20 backdrop-blur-xs p-0.5 rounded-lg border border-white/20 shrink-0">
+                <button
+                  onClick={() => {
+                    setSelectedType('new');
+                    setNumberRange('all');
+                    const firstNew = allHymns.find((h) => h.type === 'new');
+                    if (firstNew) handleSelectHymn(firstNew, false);
+                    setMobileViewMode('list');
+                  }}
+                  className={`px-2 py-1 rounded-md text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    selectedType === 'new'
+                      ? 'bg-white text-amber-900 shadow-xs'
+                      : 'text-amber-100 hover:text-white'
+                  }`}
+                >
+                  새찬송가 (645)
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedType('gospel');
+                    setNumberRange('all');
+                    const firstGospel = allHymns.find((h) => h.type === 'gospel');
+                    if (firstGospel) handleSelectHymn(firstGospel, false);
+                    setMobileViewMode('list');
+                  }}
+                  className={`px-2 py-1 rounded-md text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    selectedType === 'gospel'
+                      ? 'bg-white text-amber-900 shadow-xs'
+                      : 'text-amber-100 hover:text-white'
+                  }`}
+                >
+                  가스펠 ({DEFAULT_GOSPEL_SONGS.length + customGospels.length})
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setIsBackupModalOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-950/40 hover:bg-amber-950/60 text-amber-100 text-xs font-bold border border-white/25 flex items-center gap-1 transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                  title="수정한 찬송가 가사 전체 백업 및 복원"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-300" />
+                  <span>백업/복원</span>
+                </button>
+
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-950/40 hover:bg-amber-950/60 text-amber-100 text-xs font-bold border border-white/25 flex items-center gap-1 transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5 text-amber-300" />
+                  <span>가스펠 등록</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Mode Toggle (List vs Lyrics Viewer) */}
+        <div className="flex md:hidden items-center justify-center p-0.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 text-xs font-bold">
           <button
-            onClick={() => setIsBannerVisible(false)}
-            title="창 닫기"
-            className="absolute top-2.5 right-2.5 p-1 rounded-full bg-black/20 hover:bg-black/40 text-amber-100 hover:text-white transition-all cursor-pointer z-10"
+            onClick={() => setMobileViewMode('list')}
+            className={`flex-1 py-1 rounded-md text-center transition-all ${
+              mobileViewMode === 'list'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-zinc-600 dark:text-zinc-400'
+            }`}
           >
-            <X className="w-3.5 h-3.5" />
+            {selectedType === 'new' ? '새찬송가' : '가스펠'} 목록 ({filteredHymns.length})
           </button>
-
-          <div className="pr-6">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <Music className="w-5 h-5 animate-pulse" />
-              <h2 className="text-lg sm:text-xl font-extrabold font-serif leading-tight">
-                찬송가 & 가스펠 CCM
-              </h2>
-            </div>
-            <p className="text-xs text-amber-100 font-medium leading-tight">
-              새찬송가 645곡, 가스펠ccm
-            </p>
-          </div>
-
-          {/* Type Switcher & Add Button aligned side-by-side in a single row */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none shrink-0 max-w-full">
-            <div className="flex items-center bg-black/20 backdrop-blur-xs p-0.5 rounded-lg border border-white/20 shrink-0">
-              <button
-                onClick={() => {
-                  setSelectedType('new');
-                  setNumberRange('all');
-                  const firstNew = allHymns.find((h) => h.type === 'new');
-                  if (firstNew) handleSelectHymn(firstNew, false);
-                  setMobileViewMode('list');
-                }}
-                className={`px-2 py-1 rounded-md text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                  selectedType === 'new'
-                    ? 'bg-white text-amber-900 shadow-xs'
-                    : 'text-amber-100 hover:text-white'
-                }`}
-              >
-                새찬송가 (645)
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedType('gospel');
-                  setNumberRange('all');
-                  const firstGospel = allHymns.find((h) => h.type === 'gospel');
-                  if (firstGospel) handleSelectHymn(firstGospel, false);
-                  setMobileViewMode('list');
-                }}
-                className={`px-2 py-1 rounded-md text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                  selectedType === 'gospel'
-                    ? 'bg-white text-amber-900 shadow-xs'
-                    : 'text-amber-100 hover:text-white'
-                }`}
-              >
-                가스펠 ({DEFAULT_GOSPEL_SONGS.length + customGospels.length})
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={() => setIsBackupModalOpen(true)}
-                className="px-2.5 py-1 rounded-lg bg-amber-950/40 hover:bg-amber-950/60 text-amber-100 text-xs font-bold border border-white/25 flex items-center gap-1 transition-all cursor-pointer shadow-xs whitespace-nowrap"
-                title="수정한 찬송가 가사 전체 백업 및 복원"
-              >
-                <Download className="w-3.5 h-3.5 text-amber-300" />
-                <span>백업/복원</span>
-              </button>
-
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="px-2.5 py-1 rounded-lg bg-amber-950/40 hover:bg-amber-950/60 text-amber-100 text-xs font-bold border border-white/25 flex items-center gap-1 transition-all cursor-pointer shadow-xs whitespace-nowrap"
-              >
-                <Plus className="w-3.5 h-3.5 text-amber-300" />
-                <span>가스펠 등록</span>
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={() => setMobileViewMode('viewer')}
+            className={`flex-1 py-1 rounded-md text-center transition-all ${
+              mobileViewMode === 'viewer'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-zinc-600 dark:text-zinc-400'
+            }`}
+          >
+            {selectedHymn.title} 가사보기
+          </button>
         </div>
-      )}
-
-      {/* Mobile Mode Toggle (List vs Lyrics Viewer) */}
-      <div className="flex md:hidden items-center justify-center p-0.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 text-xs font-bold">
-        <button
-          onClick={() => setMobileViewMode('list')}
-          className={`flex-1 py-1 rounded-md text-center transition-all ${
-            mobileViewMode === 'list'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'text-zinc-600 dark:text-zinc-400'
-          }`}
-        >
-          {selectedType === 'new' ? '새찬송가' : '가스펠'} 목록 ({filteredHymns.length})
-        </button>
-        <button
-          onClick={() => setMobileViewMode('viewer')}
-          className={`flex-1 py-1 rounded-md text-center transition-all ${
-            mobileViewMode === 'viewer'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'text-zinc-600 dark:text-zinc-400'
-          }`}
-        >
-          {selectedHymn.title} 가사보기
-        </button>
       </div>
 
       {/* Main Grid: Left List (5 Cols) & Right Viewer (7 Cols) */}
@@ -711,8 +733,8 @@ export const HymnTab: React.FC<HymnTabProps> = ({
             )}
           </div>
 
-          {/* Hymns Scrollable List */}
-          <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
+          {/* Hymns List (Scrolls naturally within App.tsx main container) */}
+          <div className="space-y-1.5 pr-1 pb-4">
             <div className="text-[11px] text-zinc-400 font-semibold px-1 pb-1 flex items-center justify-between">
               <span>검색결과 {filteredHymns.length}곡 목록</span>
               {selectedType === 'gospel' && (
@@ -825,13 +847,13 @@ export const HymnTab: React.FC<HymnTabProps> = ({
           }`}
         >
           {/* 모바일 전용: 목록으로 뒤로가기 버튼 */}
-          <div className="flex md:hidden items-center mb-2">
+          <div className="flex md:hidden items-center justify-end mb-2">
             <button
               onClick={() => setMobileViewMode('list')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-zinc-800 hover:bg-amber-100 dark:hover:bg-zinc-700 text-amber-700 dark:text-amber-300 text-xs font-extrabold border border-amber-300 dark:border-zinc-600 transition-all active:scale-95 cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-black border border-blue-400/50 shadow-md transition-all active:scale-95 cursor-pointer ml-auto"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>← 목록으로</span>
+              <ChevronLeft className="w-4 h-4 text-white" />
+              <span>목록으로</span>
             </button>
           </div>
 

@@ -29,6 +29,7 @@ interface Props {
   bookmarks: UserBookmark[];
   prayers: PrayerNote[];
   onAddPrayer: (note: Omit<PrayerNote, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onUpdatePrayer?: (id: string, title: string, content: string, category: PrayerNote['category']) => void;
   onTogglePrayerAnswered: (id: string) => void;
   onDeletePrayer: (id: string) => void;
   onDeleteHighlight: (id: string) => void;
@@ -42,6 +43,7 @@ export const MemoTab: React.FC<Props> = ({
   bookmarks,
   prayers,
   onAddPrayer,
+  onUpdatePrayer,
   onTogglePrayerAnswered,
   onDeletePrayer,
   onDeleteHighlight,
@@ -52,10 +54,14 @@ export const MemoTab: React.FC<Props> = ({
   const [subTab, setSubTab] = useState<'prayers' | 'highlights' | 'bookmarks'>('prayers');
   const [showAddPrayerModal, setShowAddPrayerModal] = useState(false);
 
-  // New prayer form
+  // New prayer form & Edit prayer form
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newCategory, setNewCategory] = useState<PrayerNote['category']>('개인');
+
+  // Edit prayer state
+  const [editingPrayer, setEditingPrayer] = useState<PrayerNote | null>(null);
+  const [expandedPrayerIds, setExpandedPrayerIds] = useState<string[]>([]);
 
   // Voice recognition states
   const [showVoiceModal, setShowVoiceModal] = useState(false);
@@ -188,7 +194,7 @@ export const MemoTab: React.FC<Props> = ({
       ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
     if (!SpeechRecognitionAPI) {
-      alert('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome, Safari, Edge 브라우저를 이용해 주세요.');
+      alert('이 브라우저는 음성 인식을 지원하지 않습니다. 구글 크롬(Chrome)이나 삼성 인터넷 브라우저를 이용해 주세요.');
       return;
     }
 
@@ -200,7 +206,9 @@ export const MemoTab: React.FC<Props> = ({
 
     const recognition = new SpeechRecognitionAPI();
     recognition.lang = 'ko-KR';
-    recognition.continuous = true;
+    // Mobile browsers (especially Android Chrome) unstable with continuous=true, set continuous=false for maximum compatibility
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    recognition.continuous = !isMobile;
     recognition.interimResults = true;
 
     recognition.onstart = () => {
@@ -228,8 +236,12 @@ export const MemoTab: React.FC<Props> = ({
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
       setInterimTranscript('');
-      if (event.error === 'not-allowed') {
-        alert('마이크 접근 권한이 거부되었습니다. 브라우저 설정에서 마이크 사용을 허용해 주세요.');
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        alert('🎤 마이크 권한이 차단되어 있습니다. 브라우저 주소창 왼쪽의 [보안/마이크 아이콘]을 눌러 마이크 사용을 허용해 주세요!');
+      } else if (event.error === 'no-speech') {
+        // Silently handle no-speech timeout on mobile
+      } else if (event.error === 'network') {
+        alert('🌐 음성 인식을 위한 인터넷 연결 상태를 확인해 주세요.');
       }
     };
 
@@ -259,18 +271,16 @@ export const MemoTab: React.FC<Props> = ({
 
   const handleOpenVoiceModal = () => {
     const now = new Date();
-    const defaultTitle = `음성 기도 메모 (${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')})`;
+    const defaultTitle = `음성 메모 (${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')})`;
     setVoiceTitle(defaultTitle);
     setVoiceContent('');
     setVoiceCategory('개인');
     setShowVoiceModal(true);
 
-    // Automatically start listening when modal opens
-    setTimeout(() => {
-      startVoiceRecognition((text) => {
-        setVoiceContent((prev) => (prev ? prev + ' ' + text : text));
-      });
-    }, 150);
+    // Synchronous execution compliant with Mobile User-Gesture Policy
+    startVoiceRecognition((text) => {
+      setVoiceContent((prev) => (prev ? prev + ' ' + text : text));
+    });
   };
 
   const handleCloseVoiceModal = () => {
@@ -329,87 +339,90 @@ export const MemoTab: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      {/* Header Banner */}
-      <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative">
-        <div className="pr-10 sm:pr-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
-            <h2 className="text-lg sm:text-2xl font-extrabold font-serif">
-              메모 기도 노트
-            </h2>
+    <div className="space-y-2 p-0">
+      {/* Sticky Fixed Header Container (Banner + Sub-tabs Navigation) */}
+      <div className="sticky top-0 z-30 bg-zinc-100 dark:bg-zinc-950 pt-1 pb-1.5 space-y-2 backdrop-blur-md">
+        {/* Header Banner */}
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative">
+          <div className="pr-10 sm:pr-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
+              <h2 className="text-lg sm:text-2xl font-extrabold font-serif">
+                메모 노트
+              </h2>
+            </div>
+            <p className="text-xs sm:text-sm text-amber-100">
+              하이라이트, 북마크, 메모가 로그인이나 네트워크 연결 없이 사용자 기기에 안전하게 지속 저장됩니다.
+            </p>
           </div>
-          <p className="text-xs sm:text-sm text-amber-100">
-            하이라이트, 북마크, 기도 제목이 로그인이나 네트워크 연결 없이 사용자 기기에 안전하게 지속 저장됩니다.
-          </p>
+
+          {/* Local storage status indicator & Backup export */}
+          <div className="flex items-center gap-2 pr-8 sm:pr-10">
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-black/20 text-xs font-semibold border border-white/20">
+              <HardDrive className="w-3.5 h-3.5 text-emerald-300" />
+              <span>오프라인 기기 저장됨</span>
+            </span>
+
+            <button
+              onClick={handleExportBackup}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white text-zinc-900 hover:bg-amber-50 text-xs font-bold transition-colors shadow-xs cursor-pointer"
+              title="백업 파일 다운로드"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>백업 저장</span>
+            </button>
+          </div>
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute top-3 right-3 p-1.5 rounded-xl bg-black/20 hover:bg-black/40 text-white transition-all cursor-pointer shadow-xs active:scale-95"
+              title="메모 노트 닫기 (성경 읽기로 이동)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
-        {/* Local storage status indicator & Backup export */}
-        <div className="flex items-center gap-2 pr-8 sm:pr-10">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-black/20 text-xs font-semibold border border-white/20">
-            <HardDrive className="w-3.5 h-3.5 text-emerald-300" />
-            <span>오프라인 기기 저장됨</span>
-          </span>
+        {/* Sub-tabs Navigation */}
+        <div className="flex items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-2 overflow-x-auto">
+          <button
+            onClick={() => setSubTab('prayers')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              subTab === 'prayers'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
+            }`}
+          >
+            <Heart className="w-3.5 h-3.5" />
+            <span>메모 ({prayers.length})</span>
+          </button>
 
           <button
-            onClick={handleExportBackup}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white text-zinc-900 hover:bg-amber-50 text-xs font-bold transition-colors shadow-xs cursor-pointer"
-            title="백업 파일 다운로드"
+            onClick={() => setSubTab('highlights')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              subTab === 'highlights'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
+            }`}
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>백업 저장</span>
+            <Highlighter className="w-3.5 h-3.5" />
+            <span>형광펜 구절 ({highlights.length})</span>
+          </button>
+
+          <button
+            onClick={() => setSubTab('bookmarks')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              subTab === 'bookmarks'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
+            }`}
+          >
+            <Bookmark className="w-3.5 h-3.5" />
+            <span>북마크 ({bookmarks.length})</span>
           </button>
         </div>
-
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-3 right-3 p-1.5 rounded-xl bg-black/20 hover:bg-black/40 text-white transition-all cursor-pointer shadow-xs active:scale-95"
-            title="메모 기도 노트 닫기 (성경 읽기로 이동)"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
-
-      {/* Sub-tabs Navigation */}
-      <div className="flex items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-2 overflow-x-auto">
-        <button
-          onClick={() => setSubTab('prayers')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-            subTab === 'prayers'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-          }`}
-        >
-          <Heart className="w-3.5 h-3.5" />
-          <span>기도 노트 ({prayers.length})</span>
-        </button>
-
-        <button
-          onClick={() => setSubTab('highlights')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-            subTab === 'highlights'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-          }`}
-        >
-          <Highlighter className="w-3.5 h-3.5" />
-          <span>형광펜 구절 ({highlights.length})</span>
-        </button>
-
-        <button
-          onClick={() => setSubTab('bookmarks')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-            subTab === 'bookmarks'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-          }`}
-        >
-          <Bookmark className="w-3.5 h-3.5" />
-          <span>북마크 ({bookmarks.length})</span>
-        </button>
       </div>
 
       {/* Sub-tab 1: Prayer Journal */}
@@ -417,13 +430,13 @@ export const MemoTab: React.FC<Props> = ({
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-              마음의 기도를 기록하고 응답의 은혜를 기억하세요
+              은혜로운 묵상과 메모를 자유롭게 기록해보세요
             </h3>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={handleOpenVoiceModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-500 to-amber-600 text-white font-bold text-xs hover:from-red-600 hover:to-amber-700 transition-all shadow-xs cursor-pointer"
-                title="음성으로 빠르게 기도 메모 작성"
+                title="음성으로 빠르게 메모 작성"
               >
                 <Mic className="w-3.5 h-3.5 animate-pulse text-amber-200" />
                 <span>음성 메모 작성</span>
@@ -434,73 +447,95 @@ export const MemoTab: React.FC<Props> = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 transition-colors shadow-xs cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>새 기도 제목 작성</span>
+                <span>새 메모 작성</span>
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
             {prayers.length === 0 ? (
-              <div className="col-span-full p-12 text-center text-zinc-400 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl space-y-2">
+              <div className="p-12 text-center text-zinc-400 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl space-y-2">
                 <Heart className="w-8 h-8 mx-auto text-amber-500/40" />
-                <p className="font-medium text-sm">아직 작성된 기도 제목이 없습니다.</p>
-                <p className="text-xs">상단의 버튼을 눌러 기도 제목을 작성해 보세요.</p>
+                <p className="font-medium text-sm">아직 작성된 메모가 없습니다.</p>
+                <p className="text-xs">상단의 버튼을 눌러 새 메모를 작성해 보세요.</p>
               </div>
             ) : (
-              prayers.map((prayer) => (
-                <div
-                  key={prayer.id}
-                  className={`p-5 rounded-2xl border transition-all space-y-3 ${
-                    prayer.isAnswered
-                      ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/80'
-                      : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 shadow-xs'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs">
-                        {prayer.category}
-                      </span>
-                      {prayer.isAnswered && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500 text-white font-bold text-xs flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" />
-                          <span>기도 응답! 🙏</span>
+              prayers.map((prayer) => {
+                const isExpanded = expandedPrayerIds.includes(prayer.id);
+                const togglePrayerExpand = () => {
+                  setExpandedPrayerIds((prev) =>
+                    prev.includes(prayer.id)
+                      ? prev.filter((id) => id !== prayer.id)
+                      : [...prev, prayer.id]
+                  );
+                };
+
+                return (
+                  <div
+                    key={prayer.id}
+                    className={`rounded-2xl border transition-all duration-200 overflow-hidden shadow-xs ${
+                      isExpanded
+                        ? 'bg-white dark:bg-zinc-900 border-amber-400/80 dark:border-amber-600/80 ring-2 ring-amber-500/10'
+                        : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-amber-300 dark:hover:border-amber-700'
+                    }`}
+                  >
+                    {/* Header line - Title List View */}
+                    <div
+                      onClick={togglePrayerExpand}
+                      className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer select-none hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors gap-2"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs shrink-0">
+                          {prayer.category}
                         </span>
-                      )}
+                        <h4 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 truncate">
+                          {prayer.title}
+                        </h4>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPrayer(prayer)}
+                          className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold text-xs transition-all cursor-pointer flex items-center gap-1"
+                          title="메모 수정"
+                        >
+                          <span>수정</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onDeletePrayer(prayer.id)}
+                          className="p-1 text-zinc-400 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
+                          title="메모 삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={togglePrayerExpand}
+                          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <button
-                      onClick={() => onDeletePrayer(prayer.id)}
-                      className="text-zinc-400 hover:text-red-500 p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Expanded Memo Content */}
+                    {isExpanded && (
+                      <div className="p-3.5 sm:p-4 pt-0 space-y-2 border-t border-zinc-100 dark:border-zinc-800/80 animate-in fade-in duration-150">
+                        <p className="text-xs sm:text-sm text-zinc-700 dark:text-zinc-200 leading-relaxed whitespace-pre-line mt-3">
+                          {prayer.content || '내용이 없습니다.'}
+                        </p>
+                        <div className="text-[11px] text-zinc-400 pt-2 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+                          작성일: {prayer.createdAt.split('T')[0]}
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  <h4 className="font-bold text-base text-zinc-900 dark:text-zinc-100">
-                    {prayer.title}
-                  </h4>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed whitespace-pre-line">
-                    {prayer.content}
-                  </p>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60 text-xs text-zinc-400">
-                    <span>작성일: {prayer.createdAt.split('T')[0]}</span>
-
-                    <button
-                      onClick={() => onTogglePrayerAnswered(prayer.id)}
-                      className={`flex items-center gap-1 px-3 py-1 rounded-lg font-bold transition-colors ${
-                        prayer.isAnswered
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-emerald-100'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{prayer.isAnswered ? '응답 완료' : '응답 표시'}</span>
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -746,7 +781,7 @@ export const MemoTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Add Prayer Form Modal */}
+      {/* Add Memo Form Modal */}
       {showAddPrayerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <form
@@ -754,7 +789,7 @@ export const MemoTab: React.FC<Props> = ({
             className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4"
           >
             <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
-              <h3 className="font-bold text-lg text-zinc-900 dark:text-zinc-100">새 기도 제목 작성</h3>
+              <h3 className="font-bold text-lg text-zinc-900 dark:text-zinc-100">새 메모 작성</h3>
               <button
                 type="button"
                 onClick={() => {
@@ -771,15 +806,15 @@ export const MemoTab: React.FC<Props> = ({
 
             <div>
               <label className="text-xs font-semibold text-zinc-500 block mb-1">
-                기도 분류
+                메모 분류
               </label>
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value as any)}
                 className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm"
               >
-                <option value="개인">개인 기도</option>
-                <option value="가족">가족 / 자녀</option>
+                <option value="개인">개인 메모</option>
+                <option value="가족">묵상 메모</option>
                 <option value="교회">교회 / 공동체</option>
                 <option value="이웃">이웃 / 환우</option>
                 <option value="선교">열방 / 선교</option>
@@ -789,7 +824,7 @@ export const MemoTab: React.FC<Props> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-zinc-500">
-                  기도 제목
+                  메모 제목
                 </label>
                 <button
                   type="button"
@@ -809,7 +844,7 @@ export const MemoTab: React.FC<Props> = ({
                       ? 'bg-red-500 text-white animate-pulse'
                       : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-amber-600'
                   }`}
-                  title="음성으로 기도 제목 받아쓰기"
+                  title="음성으로 메모 제목 받아쓰기"
                 >
                   <Mic className="w-3 h-3" />
                   <span>{isListening && formMicField === 'title' ? '받아쓰는 중...' : '음성 입력'}</span>
@@ -818,7 +853,7 @@ export const MemoTab: React.FC<Props> = ({
               <input
                 type="text"
                 required
-                placeholder="기도 제목을 입력하거나 음성으로 말하세요"
+                placeholder="메모 제목을 입력하거나 음성으로 말하세요"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-amber-500"
@@ -828,7 +863,7 @@ export const MemoTab: React.FC<Props> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-zinc-500">
-                  세부 기도 내용
+                  세부 메모 내용
                 </label>
                 <button
                   type="button"
@@ -848,7 +883,7 @@ export const MemoTab: React.FC<Props> = ({
                       ? 'bg-red-500 text-white animate-pulse'
                       : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-amber-600'
                   }`}
-                  title="음성으로 세부 기도 내용 받아쓰기"
+                  title="음성으로 세부 메모 내용 받아쓰기"
                 >
                   <Mic className="w-3 h-3" />
                   <span>{isListening && formMicField === 'content' ? '받아쓰는 중...' : '음성 입력'}</span>
@@ -856,7 +891,7 @@ export const MemoTab: React.FC<Props> = ({
               </div>
               <textarea
                 rows={3}
-                placeholder="구체적인 기도 내용이나 약속의 말씀 구절을 적거나 음성으로 말씀하세요"
+                placeholder="은혜로운 묵상 내용이나 성경 말씀 메모를 적거나 음성으로 말씀하세요"
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-amber-500"
@@ -885,7 +920,7 @@ export const MemoTab: React.FC<Props> = ({
                 type="submit"
                 className="px-5 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700"
               >
-                기도 제목 저장
+                메모 저장
               </button>
             </div>
           </form>
@@ -1046,6 +1081,88 @@ export const MemoTab: React.FC<Props> = ({
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>메모로 즉시 저장</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Memo Modal */}
+      {editingPrayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
+              <h3 className="font-bold text-lg text-zinc-900 dark:text-zinc-100">메모 수정</h3>
+              <button
+                type="button"
+                onClick={() => setEditingPrayer(null)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="닫기"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-zinc-500 block mb-1">
+                메모 분류
+              </label>
+              <select
+                value={editingPrayer.category}
+                onChange={(e) => setEditingPrayer({ ...editingPrayer, category: e.target.value as any })}
+                className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm"
+              >
+                <option value="개인">개인 메모</option>
+                <option value="가족">묵상 메모</option>
+                <option value="교회">교회 / 공동체</option>
+                <option value="이웃">이웃 / 환우</option>
+                <option value="선교">열방 / 선교</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-zinc-500 block mb-1">
+                메모 제목
+              </label>
+              <input
+                type="text"
+                value={editingPrayer.title}
+                onChange={(e) => setEditingPrayer({ ...editingPrayer, title: e.target.value })}
+                className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-zinc-500 block mb-1">
+                메모 내용
+              </label>
+              <textarea
+                rows={5}
+                value={editingPrayer.content}
+                onChange={(e) => setEditingPrayer({ ...editingPrayer, content: e.target.value })}
+                className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm font-medium leading-relaxed"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setEditingPrayer(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 text-xs font-bold"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onUpdatePrayer) {
+                    onUpdatePrayer(editingPrayer.id, editingPrayer.title, editingPrayer.content, editingPrayer.category);
+                  }
+                  setEditingPrayer(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-amber-600 text-white font-extrabold text-xs hover:bg-amber-700 transition-colors shadow-md cursor-pointer"
+              >
+                수정 완료
               </button>
             </div>
           </div>

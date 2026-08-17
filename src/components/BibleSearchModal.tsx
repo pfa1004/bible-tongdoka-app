@@ -23,8 +23,8 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateToVerse: (book: Book, chapter: number, verseNum: number) => void;
-  onCreateVerseCard: (verseText: string, refText: string) => void;
+  onNavigateToVerse: (book: Book, chapter: number, verseNum: number, query?: string) => void;
+  onCreateVerseCard: (verseText: string, refText: string, query?: string) => void;
   initialQuery?: string;
 }
 
@@ -94,19 +94,28 @@ export const BibleSearchModal: React.FC<Props> = ({
       )
     : TRANSLATIONS;
 
+  const [isSearching, setIsSearching] = useState(false);
+
   const performSearch = (searchQuery: string, transId: TranslationId, scope: string = 'ALL') => {
     if (!searchQuery.trim()) {
       setResults([]);
+      setIsSearching(false);
       return;
     }
-    const searchRes = searchBibleVerses(searchQuery, transId, scope);
-    setResults(searchRes);
-    setTestamentFilter('ALL');
-    setBookFilter('ALL');
-    setSubQuery('');
-    setCurrentPage(1);
+    setIsSearching(true);
+    // Use requestAnimationFrame / setTimeout to keep input typing smooth
+    setTimeout(() => {
+      const searchRes = searchBibleVerses(searchQuery, transId, scope);
+      setResults(searchRes);
+      setTestamentFilter('ALL');
+      setBookFilter('ALL');
+      setSubQuery('');
+      setCurrentPage(1);
+      setIsSearching(false);
+    }, 10);
   };
 
+  // Initial search only when modal opens with initialQuery, or translation/scope option changes
   useEffect(() => {
     if (isOpen) {
       const q = initialQuery !== undefined ? initialQuery : query;
@@ -142,14 +151,14 @@ export const BibleSearchModal: React.FC<Props> = ({
   };
 
   const handleNavigate = (res: SearchVerseResult) => {
-    onNavigateToVerse(res.book, res.chapter, res.verse.number);
+    onNavigateToVerse(res.book, res.chapter, res.verse.number, query);
     onClose();
   };
 
   const handleCardCreate = (res: SearchVerseResult) => {
     const shortBook = res.book.shortName || res.book.name;
     const refStr = `${shortBook}${res.chapter}:${res.verse.number} (${res.book.englishName})`;
-    onCreateVerseCard(res.matchedText, refStr);
+    onCreateVerseCard(res.matchedText, refStr, query);
     onClose();
   };
 
@@ -262,8 +271,8 @@ export const BibleSearchModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-3xl rounded-3xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-x-0 top-14 bottom-16 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="w-[95vw] sm:w-[90vw] max-w-3xl h-full max-h-full rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100 flex flex-col">
         {/* Modal Top Header */}
         <div className="p-3.5 sm:p-5 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-white flex items-center justify-between shrink-0">
           <div>
@@ -287,36 +296,45 @@ export const BibleSearchModal: React.FC<Props> = ({
         </div>
 
         {/* Search Input Box & Translation/Scope Selector Bar */}
-        <div className="p-3 sm:p-4 bg-zinc-50 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800 space-y-2.5 shrink-0">
-          <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  performSearch(e.target.value, selectedTranslation, selectedScope);
-                }}
-                placeholder="검색어 입력 (예: 소망, 사랑, 요한복음 3:16, 시편 23)..."
-                className="w-full pl-10 pr-9 py-2 rounded-2xl text-xs sm:text-sm font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs text-zinc-900 dark:text-zinc-100"
-                autoFocus
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setResults([]);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+        <div className="p-2.5 sm:p-4 bg-zinc-50 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800 space-y-2 shrink-0">
+          <form onSubmit={handleSearchSubmit} className="flex flex-col gap-2">
+            {/* Top row: Search input + Search submit button */}
+            <div className="flex items-center gap-1.5 w-full">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="검색어 입력 (예: 소망, 사랑, 요3:16)..."
+                  className="w-full pl-9 pr-8 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-amber-500 text-zinc-900 dark:text-zinc-100"
+                  autoFocus
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('');
+                      setResults([]);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs transition-all shadow-xs shrink-0 flex items-center gap-1 cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>검색</span>
+              </button>
             </div>
 
-            <div className="flex gap-1.5 shrink-0">
+            {/* Bottom row: Scope dropdown & Translation dropdown */}
+            <div className="grid grid-cols-2 gap-1.5 w-full">
               {/* Scope Selector Dropdown */}
               <select
                 value={selectedScope}
@@ -324,7 +342,7 @@ export const BibleSearchModal: React.FC<Props> = ({
                   setSelectedScope(e.target.value);
                   performSearch(query, selectedTranslation, e.target.value);
                 }}
-                className="px-2.5 py-2 rounded-2xl text-xs font-bold bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer max-w-[130px] sm:max-w-none"
+                className="w-full px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer truncate"
               >
                 <option value="ALL">성경 전체</option>
                 <option value="OT">구약 전체</option>
@@ -349,7 +367,7 @@ export const BibleSearchModal: React.FC<Props> = ({
               <select
                 value={selectedTranslation}
                 onChange={(e) => setSelectedTranslation(e.target.value as TranslationId)}
-                className="px-2.5 py-2 rounded-2xl text-xs font-bold bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                className="w-full px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer truncate"
               >
                 {allTranslations.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -357,15 +375,6 @@ export const BibleSearchModal: React.FC<Props> = ({
                   </option>
                 ))}
               </select>
-
-              {/* Search Button */}
-              <button
-                type="submit"
-                className="px-3.5 py-2 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs transition-all shadow-xs shrink-0 flex items-center gap-1 cursor-pointer"
-              >
-                <Search className="w-4 h-4" />
-                <span>검색</span>
-              </button>
             </div>
           </form>
 
@@ -558,12 +567,17 @@ export const BibleSearchModal: React.FC<Props> = ({
                 </div>
               )}
             </div>
-        </div>
-      )}
+          </div>
+        )}
 
         {/* Search Results Display Area */}
         <div className="p-3 sm:p-5 overflow-y-auto space-y-2 flex-1">
-          {displayedResults.length > 0 ? (
+          {isSearching ? (
+            <div className="text-center py-16 text-amber-600 dark:text-amber-400 space-y-3">
+              <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-sm font-bold animate-pulse">말씀을 찾는 중입니다...</p>
+            </div>
+          ) : displayedResults.length > 0 ? (
             viewMode === 'compact' ? (
               /* COMPACT 1-LINE LIST VIEW (간단히 보기) */
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xs">
@@ -732,12 +746,6 @@ export const BibleSearchModal: React.FC<Props> = ({
             </span>
           )}
 
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 font-bold text-xs transition-colors cursor-pointer self-end sm:self-auto"
-          >
-            닫기
-          </button>
         </div>
       </div>
     </div>

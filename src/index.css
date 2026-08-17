@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+@layer utilities {
+  /* 이미지 1 명품 스타일 전용 스티커 및 컬러 파피루스 스타일 */
+  .theme-image1-header {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+  
+  .theme-image1-slate {
+    background-color: #1e293b;
+  }
+
+  .theme-image1-viewer {
+    background-color: #fffbeb !important;
+    color: #292524 !important;
+  }
+
+  .theme-image1-verse-num {
+    color: #0284c7 !important;
+    font-weight: 800;
+  }
+
+  .theme-image1-keyword {
+    color: #0284c7 !important;
+    font-weight: 800;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}

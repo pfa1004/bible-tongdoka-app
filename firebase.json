@@ -8,6 +8,14 @@
     ],
     "rewrites": [
       {
+        "source": "/api/tts",
+        "destination": "https://gimnamgon-bible-tts.hf.space/api/tts"
+      },
+      {
+        "source": "/api/voices",
+        "destination": "https://gimnamgon-bible-tts.hf.space/api/voices"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

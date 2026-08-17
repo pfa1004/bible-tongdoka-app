@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Book } from '../types';
 import { BIBLE_OVERVIEWS } from '../data/bibleOverviewsData';
+import { BOOK_DETAILED_INTROS } from '../data/bookIntrosData';
 import {
   X,
   Edit3,
@@ -14,6 +15,8 @@ import {
   Calendar,
   Bookmark,
   FileText,
+  Download,
+  Upload,
 } from 'lucide-react';
 
 interface Props {
@@ -87,24 +90,28 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
 
     setIsEditing(false);
     const bookId = currentBook.id;
+    const markdownIntro = BOOK_DETAILED_INTROS[bookId];
     const localDataStr = localStorage.getItem(`${STORAGE_KEY_PREFIX}${bookId}`);
 
     if (localDataStr) {
       try {
-        const parsed: DetailedBookIntro = JSON.parse(localDataStr);
+        const parsed = JSON.parse(localDataStr);
         setAuthor(parsed.author || '');
         setPeriod(parsed.period || '');
         setKeyTheme(parsed.keyTheme || '');
         setKeyChapters(parsed.keyChapters || '');
         setSummary(parsed.summary || '');
-        setDetailedIntro(parsed.detailedIntro || '');
-        return;
+        // If user actively saved custom edit in UI, use it; otherwise use real-time markdownIntro
+        if (parsed.isUserCustomEdited && parsed.detailedIntro) {
+          setDetailedIntro(parsed.detailedIntro);
+          return;
+        }
       } catch {
-        // Fallback to default
+        // Fallback
       }
     }
 
-    // Fallback to Special Intros or General Overview
+    // Fallback or Live Markdown Intro
     const special = SPECIAL_DEFAULT_INTROS[bookId];
     const baseOverview = BIBLE_OVERVIEWS[bookId];
 
@@ -114,12 +121,9 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
     const defaultKeyChapters = special?.keyChapters || baseOverview?.keyChapters || '주요 본문';
     const defaultSummary = special?.summary || baseOverview?.summary || `${currentBook.name} 말씀 개요입니다.`;
     const defaultDetailed =
+      markdownIntro ||
       special?.detailedIntro ||
-      `[ ${currentBook.name} (${currentBook.englishName || currentBook.name}) 서론 ]\n\n${
-        baseOverview?.summary || ''
-      }\n\n• 저자: ${baseOverview?.author || '미상'}\n• 핵심 주제: ${
-        baseOverview?.keyTheme || '하나님 경배와 구원'
-      }\n• 주요 장: ${baseOverview?.keyChapters || '1장'}\n\n[ 본문 묵상 가이드 ]\n${currentBook.name} 말씀을 통해 주시는 하나님의 마음과 교훈을 묵상해 보세요. 상단 '편집' 버튼을 눌러 나만의 서론이나 묵상 노트를 직접 작성하고 저장하실 수 있습니다.`;
+      `[ ${currentBook.name} (${currentBook.englishName || currentBook.name}) 서론 ]`;
 
     setAuthor(defaultAuthor);
     setPeriod(defaultPeriod);
@@ -127,12 +131,12 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
     setKeyChapters(defaultKeyChapters);
     setSummary(defaultSummary);
     setDetailedIntro(defaultDetailed);
-  }, [isOpen, currentBook.id, currentBook.name]);
+  }, [isOpen, currentBook.id, currentBook.name, BOOK_DETAILED_INTROS[currentBook.id]]);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    const dataToSave: DetailedBookIntro = {
+    const dataToSave = {
       bookId: currentBook.id,
       bookName: currentBook.name,
       author,
@@ -141,6 +145,7 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
       keyChapters,
       summary,
       detailedIntro,
+      isUserCustomEdited: true,
     };
 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${currentBook.id}`, JSON.stringify(dataToSave));
@@ -162,16 +167,66 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
       setKeyChapters(special?.keyChapters || baseOverview?.keyChapters || '주요 본문');
       setSummary(special?.summary || baseOverview?.summary || `${currentBook.name} 말씀 개요입니다.`);
       setDetailedIntro(
-        special?.detailedIntro ||
+        BOOK_DETAILED_INTROS[bookId] ||
+          special?.detailedIntro ||
           `[ ${currentBook.name} 서론 ]\n\n${baseOverview?.summary || ''}`
       );
       setIsEditing(false);
     }
   };
 
+  // Export All Custom Intros to JSON File Backup
+  const handleExportAllIntros = () => {
+    const allIntros: Record<string, any> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(STORAGE_KEY_PREFIX)) {
+        try {
+          const val = localStorage.getItem(key);
+          if (val) allIntros[key] = JSON.parse(val);
+        } catch (e) {}
+      }
+    }
+
+    const dataStr = JSON.stringify(allIntros, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `성경서론_전체백업_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Import Custom Intros JSON File Backup
+  const handleImportIntros = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        let count = 0;
+        Object.keys(parsed).forEach((key) => {
+          if (key.startsWith(STORAGE_KEY_PREFIX)) {
+            localStorage.setItem(key, JSON.stringify(parsed[key]));
+            count++;
+          }
+        });
+        alert(`성공적으로 ${count}개 성경 서론 데이터가 복구되었습니다!`);
+        window.location.reload();
+      } catch (err) {
+        alert('백업 파일 분석 중 오류가 발생했습니다. 올바른 서론 백업 JSON 파일인지 확인해 주세요.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-zinc-900 border border-amber-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-zinc-900 dark:text-zinc-100">
+    <div className="fixed inset-x-0 top-14 bottom-14 z-80 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="relative w-full max-w-3xl h-full bg-white dark:bg-zinc-900 border border-amber-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-zinc-900 dark:text-zinc-100">
         {/* Header */}
         <div className="px-4 sm:px-6 py-3.5 bg-amber-500/10 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
@@ -192,6 +247,30 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportAllIntros}
+              className="px-2.5 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+              title="작성하신 성경 서론 전체를 JSON 백업 파일로 저장합니다"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden sm:inline">서론 백업</span>
+            </button>
+
+            <label
+              className="px-2.5 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+              title="백업해 둔 서론 JSON 파일을 불러와 복구합니다"
+            >
+              <Upload className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="hidden sm:inline">서론 복구</span>
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportIntros}
+                className="hidden"
+              />
+            </label>
+
             {!isEditing ? (
               <button
                 type="button"
@@ -234,9 +313,9 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
 
           {isEditing ? (
             /* EDIT MODE */
-            <div className="space-y-4">
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between">
-                <span>✏️ 내용을 수정한 뒤 오른쪽 상단 <strong>[저장]</strong> 버튼을 누르세요.</span>
+            <div className="flex flex-col h-full space-y-3">
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between shrink-0">
+                <span>✏️ 서론 내용을 수정한 뒤 오른쪽 상단 <strong>[저장]</strong> 버튼을 누르세요.</span>
                 <button
                   type="button"
                   onClick={handleResetToDefault}
@@ -247,77 +326,15 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">
-                    저자 (Author)
-                  </label>
-                  <input
-                    type="text"
-                    value={author}
-                    onChange={(e) => setAuthor(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-medium focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">
-                    기록 시기 (Period)
-                  </label>
-                  <input
-                    type="text"
-                    value={period}
-                    onChange={(e) => setPeriod(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-medium focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">
-                  핵심 주제 (Key Theme)
-                </label>
-                <input
-                  type="text"
-                  value={keyTheme}
-                  onChange={(e) => setKeyTheme(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-medium focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">
-                  주요 장/본문 (Key Chapters)
-                </label>
-                <input
-                  type="text"
-                  value={keyChapters}
-                  onChange={(e) => setKeyChapters(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-medium focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">
-                  한 줄 요약 (Summary)
-                </label>
-                <input
-                  type="text"
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs font-medium focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">
-                  상세 서론 및 묵상 가이드 (Detailed Preface)
+              <div className="flex-1 flex flex-col min-h-0 space-y-1">
+                <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 shrink-0 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4" />
+                  <span>{currentBook.name} 상세 서론 및 해설 편집</span>
                 </label>
                 <textarea
                   value={detailedIntro}
                   onChange={(e) => setDetailedIntro(e.target.value)}
-                  rows={12}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs sm:text-sm font-serif leading-relaxed focus:ring-2 focus:ring-amber-500"
+                  className="w-full flex-1 p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/90 border border-zinc-300 dark:border-zinc-700 text-xs sm:text-sm font-serif leading-relaxed focus:ring-2 focus:ring-amber-500 focus:outline-none resize-none min-h-[380px]"
                   placeholder="서론 내용을 자유롭게 입력하세요..."
                 />
               </div>
@@ -325,48 +342,6 @@ export const BookIntroModal: React.FC<Props> = ({ isOpen, onClose, currentBook }
           ) : (
             /* VIEW MODE */
             <div className="space-y-4">
-              {/* Key Overview Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 rounded-xl bg-amber-500/5 dark:bg-zinc-800/60 border border-amber-500/20 space-y-1">
-                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5" />
-                    <span>저자</span>
-                  </span>
-                  <p className="text-xs sm:text-sm font-bold text-zinc-800 dark:text-zinc-200">{author}</p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-amber-500/5 dark:bg-zinc-800/60 border border-amber-500/20 space-y-1">
-                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>기록 시기</span>
-                  </span>
-                  <p className="text-xs sm:text-sm font-bold text-zinc-800 dark:text-zinc-200">{period}</p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-amber-500/5 dark:bg-zinc-800/60 border border-amber-500/20 space-y-1">
-                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>핵심 주제</span>
-                  </span>
-                  <p className="text-xs sm:text-sm font-bold text-zinc-800 dark:text-zinc-200">{keyTheme}</p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-amber-500/5 dark:bg-zinc-800/60 border border-amber-500/20 space-y-1">
-                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <Bookmark className="w-3.5 h-3.5" />
-                    <span>주요 장</span>
-                  </span>
-                  <p className="text-xs sm:text-sm font-bold text-zinc-800 dark:text-zinc-200">{keyChapters}</p>
-                </div>
-              </div>
-
-              {/* Summary Banner */}
-              {summary && (
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-bold leading-snug flex items-start gap-2">
-                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <span>{summary}</span>
-                </div>
-              )}
 
               {/* Detailed Intro Text */}
               <div className="p-4 sm:p-5 rounded-2xl bg-zinc-50 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 space-y-2">

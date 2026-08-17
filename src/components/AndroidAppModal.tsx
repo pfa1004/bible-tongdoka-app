@@ -126,7 +126,7 @@ export const AndroidAppModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="w-full max-w-2xl rounded-3xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white flex items-center justify-between shrink-0">
@@ -171,7 +171,7 @@ export const AndroidAppModal: React.FC<Props> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>{isDeviceFrameActive ? '📱 스마트폰 프레임 ON' : '💻 데스크톱 전체 화면'}</span>
+            <span>{isDeviceFrameActive ? '📱 갤럭시 노트20 프레임 ON' : '💻 데스크톱 전체 화면'}</span>
           </button>
         </div>
 

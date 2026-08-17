@@ -36,11 +36,13 @@ import {
   CheckCircle2,
   ArrowUp,
   FileText,
+  Volume2,
 } from 'lucide-react';
 
 interface Props {
   currentBook: Book;
   currentChapter: number;
+  targetVerseNumber?: number | null;
   onBookChange: (book: Book) => void;
   onChapterChange: (chapter: number) => void;
   readerSettings: ReaderSettings;
@@ -62,11 +64,15 @@ interface Props {
   onOpenBibleBooksModal?: (mode?: 'list' | 'overview') => void;
   onOpenBibleSearchModal?: () => void;
   openHenryTrigger?: number;
+  audioState?: any;
+  onToggleAudioPlayer?: () => void;
+  onUpdateAudioState?: (update: any) => void;
 }
 
 export const BibleTab: React.FC<Props> = ({
   currentBook,
   currentChapter,
+  targetVerseNumber,
   onBookChange,
   onChapterChange,
   readerSettings,
@@ -83,6 +89,9 @@ export const BibleTab: React.FC<Props> = ({
   onOpenBibleBooksModal,
   onOpenBibleSearchModal,
   openHenryTrigger,
+  audioState,
+  onToggleAudioPlayer,
+  onUpdateAudioState,
 }) => {
   const [columnCount, setColumnCount] = useState<number>(() => {
     try {
@@ -91,14 +100,14 @@ export const BibleTab: React.FC<Props> = ({
         const parsed = parseInt(saved, 10);
         if (!isNaN(parsed) && parsed >= 1 && parsed <= 4) return parsed;
       }
-    } catch {}
+    } catch { }
     return 2;
   }); // 1, 2, 3, or 4 parallel translations
 
   const [activeTranslations, setActiveTranslations] = useState<TranslationId[]>(() => {
-    const DEFAULT_TRANSLATIONS = ['킹흠정역' as TranslationId, '킹제임스(KJV1769)' as TranslationId, '킹제임스(KJV1611)' as TranslationId];
+    const DEFAULT_TRANSLATIONS = ['KRV' as TranslationId, 'KJV' as TranslationId, 'KJV1611' as TranslationId];
     try {
-      const saved = localStorage.getItem('bible_active_translations_v3');
+      const saved = localStorage.getItem('bible_active_translations_v6');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -106,22 +115,26 @@ export const BibleTab: React.FC<Props> = ({
           if (cleaned.length > 0) return cleaned;
         }
       }
-    } catch {}
+    } catch { }
     return DEFAULT_TRANSLATIONS;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('bible_column_count', String(columnCount));
-    } catch {}
+    } catch { }
   }, [columnCount]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('bible_active_translations_v3', JSON.stringify(activeTranslations));
+      localStorage.setItem('bible_active_translations_v6', JSON.stringify(activeTranslations));
+      localStorage.setItem('bible_active_translations_v5', JSON.stringify(activeTranslations));
       localStorage.setItem('bible_active_translations', JSON.stringify(activeTranslations));
-    } catch {}
-  }, [activeTranslations]);
+    } catch { }
+    if (onUpdateAudioState && activeTranslations.length > 0) {
+      onUpdateAudioState({ selectedTranslationId: activeTranslations[0] });
+    }
+  }, [activeTranslations, onUpdateAudioState]);
 
   // Persistent Read / Unread Chapter Completion State
   const [readChapters, setReadChapters] = useState<string[]>(() => {
@@ -131,15 +144,29 @@ export const BibleTab: React.FC<Props> = ({
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch (e) {}
+    } catch (e) { }
     return [];
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('bible_read_chapters', JSON.stringify(readChapters));
-    } catch (e) {}
+    } catch (e) { }
   }, [readChapters]);
+
+  // Sync state when changed externally (e.g. PlanModal)
+  useEffect(() => {
+    const syncReadChapters = () => {
+      try {
+        const saved = localStorage.getItem('bible_read_chapters');
+        if (saved) {
+          setReadChapters(JSON.parse(saved));
+        }
+      } catch { }
+    };
+    window.addEventListener('storage', syncReadChapters);
+    return () => window.removeEventListener('storage', syncReadChapters);
+  }, []);
 
   const currentChapterKey = `${currentBook.id}_${currentChapter}`;
   const isChapterRead = readChapters.includes(currentChapterKey);
@@ -156,12 +183,11 @@ export const BibleTab: React.FC<Props> = ({
   };
 
   const handleScrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (document.documentElement) {
-      document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-    if (document.body) {
-      document.body.scrollTo({ top: 0, behavior: 'smooth' });
+    // Scroll only the main container to keep header/footer fixed
+    document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainContainer = document.querySelector('main');
+    if (mainContainer) {
+      mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -173,10 +199,200 @@ export const BibleTab: React.FC<Props> = ({
   // Long press & Inline Memo state
   const [editingMemoVerseNumber, setEditingMemoVerseNumber] = useState<number | null>(null);
   const [memoInputText, setMemoInputText] = useState('');
+  const [isSwipingSmoothly, setIsSwipingSmoothly] = useState(false);
+
+  // Touch Swipe Navigation Handlers (Y-Axis Fixed, Pure Horizontal Navigation)
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+
+  const triggerSmoothChapterNavigation = (direction: 'next' | 'prev') => {
+    if (isSwipingSmoothly) return;
+    setIsSwipingSmoothly(true);
+
+    setTimeout(() => {
+      if (direction === 'next') {
+        handleNextChapter();
+      } else {
+        handlePrevChapter();
+      }
+      setTimeout(() => {
+        setIsSwipingSmoothly(false);
+      }, 120);
+    }, 180);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+
+    const deltaX = touchEndX - touchStartXRef.current;
+    const deltaY = touchEndY - touchStartYRef.current;
+
+    // Trigger horizontal swipe ONLY when horizontal drag is clearly dominant (dx > dy * 2.0 & dx > 60px)
+    // This allows 100% natural, smooth vertical scrolling without any hindrance
+    if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 2.0) {
+      if (deltaX < 0) {
+        triggerSmoothChapterNavigation('next'); // Swipe Left -> Next Chapter
+      } else {
+        triggerSmoothChapterNavigation('prev'); // Swipe Right -> Prev Chapter
+      }
+    }
+
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+  };
+
+  // Study commentary font size and pinch-to-zoom touch gesture state
+  const [studyFontSize, setStudyFontSize] = useState<number>(14);
+  const studyPinchDistRef = useRef<{ initialDist: number; initialFontSize: number } | null>(null);
+
+  const handleStudyTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      studyPinchDistRef.current = {
+        initialDist: dist,
+        initialFontSize: studyFontSize,
+      };
+    } else {
+      studyPinchDistRef.current = null;
+    }
+  };
+
+  const handleStudyTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && studyPinchDistRef.current) {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const currentDist = Math.sqrt(dx * dx + dy * dy);
+      const scale = currentDist / studyPinchDistRef.current.initialDist;
+      const newSize = Math.max(10, Math.min(36, Math.round(studyPinchDistRef.current.initialFontSize * scale)));
+      setStudyFontSize(newSize);
+    }
+  };
+
+  const handleStudyTouchEnd = () => {
+    studyPinchDistRef.current = null;
+  };
+
+  // Draggable Floating Audio Speaker Button State & Mobile Touch Drag Handlers
+  const [floatingPos, setFloatingPos] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingSpeakerRef = useRef(false);
+  const dragSpeakerStartRef = useRef<{ x: number; y: number; initialX: number; initialY: number } | null>(null);
+  const lastTouchTimeRef = useRef<number>(0);
+
+  const handleSpeakerTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    lastTouchTimeRef.current = Date.now();
+    const touch = e.touches[0];
+    const currentX = floatingPos?.x ?? (window.innerWidth - 75);
+    const currentY = floatingPos?.y ?? (window.innerHeight - 160);
+
+    dragSpeakerStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      initialX: currentX,
+      initialY: currentY,
+    };
+    isDraggingSpeakerRef.current = false;
+  };
+
+  const handleSpeakerTouchMove = (e: React.TouchEvent) => {
+    if (!dragSpeakerStartRef.current || e.touches.length !== 1) return;
+    if (e.cancelable) e.preventDefault(); // Stop mobile browser vertical scroll interference during drag
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragSpeakerStartRef.current.x;
+    const dy = touch.clientY - dragSpeakerStartRef.current.y;
+
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      isDraggingSpeakerRef.current = true;
+    }
+
+    if (isDraggingSpeakerRef.current) {
+      const newX = Math.min(Math.max(10, dragSpeakerStartRef.current.initialX + dx), window.innerWidth - 65);
+      const newY = Math.min(Math.max(60, dragSpeakerStartRef.current.initialY + dy), window.innerHeight - 90);
+      setFloatingPos({ x: newX, y: newY });
+    }
+  };
+
+  const handleSpeakerTouchEnd = (e: React.TouchEvent) => {
+    if (e.cancelable) e.preventDefault();
+    lastTouchTimeRef.current = Date.now();
+    if (!isDraggingSpeakerRef.current && onToggleAudioPlayer) {
+      onToggleAudioPlayer(); // Short tap without dragging -> Toggle Audio
+    }
+    dragSpeakerStartRef.current = null;
+    isDraggingSpeakerRef.current = false;
+  };
+
+  const handleSpeakerMouseDown = (e: React.MouseEvent) => {
+    // Prevent ghost click from mouse event fired right after touch event
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
+
+    const currentX = floatingPos?.x ?? (window.innerWidth - 75);
+    const currentY = floatingPos?.y ?? (window.innerHeight - 160);
+
+    dragSpeakerStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      initialX: currentX,
+      initialY: currentY,
+    };
+    isDraggingSpeakerRef.current = false;
+  };
+
+  const handleSpeakerMouseMove = (e: React.MouseEvent) => {
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
+    if (!dragSpeakerStartRef.current) return;
+    const dx = e.clientX - dragSpeakerStartRef.current.x;
+    const dy = e.clientY - dragSpeakerStartRef.current.y;
+
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      isDraggingSpeakerRef.current = true;
+    }
+
+    if (isDraggingSpeakerRef.current) {
+      const newX = Math.min(Math.max(10, dragSpeakerStartRef.current.initialX + dx), window.innerWidth - 65);
+      const newY = Math.min(Math.max(60, dragSpeakerStartRef.current.initialY + dy), window.innerHeight - 90);
+      setFloatingPos({ x: newX, y: newY });
+    }
+  };
+
+  const handleSpeakerMouseUp = () => {
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
+    if (!isDraggingSpeakerRef.current && onToggleAudioPlayer) {
+      onToggleAudioPlayer();
+    }
+    dragSpeakerStartRef.current = null;
+    isDraggingSpeakerRef.current = false;
+  };
 
   // Custom Dropdown State for OT, NT, and Chapter Selection
   const [openDropdown, setOpenDropdown] = useState<'OT' | 'NT' | 'chapter' | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // TTS 낭독 중 현재 읽고 있는 구절 위치로 화면 자동 스크롤 (Auto Scroll)
+  useEffect(() => {
+    if (audioState && audioState.isPlaying && typeof audioState.currentVerseIndex === 'number') {
+      const verseNum = audioState.currentVerseIndex + 1;
+      const element = document.getElementById(`v-${verseNum}`);
+      if (element) {
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
+    }
+  }, [audioState?.currentVerseIndex, audioState?.isPlaying]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -307,24 +523,55 @@ export const BibleTab: React.FC<Props> = ({
 
   const fetchStudyData = async (verse: Verse) => {
     setIsStudyLoading(true);
-    const bookIdx = currentBook.order || (BIBLE_BOOKS.findIndex((b) => b.id === currentBook.id) + 1);
+    const bookId = currentBook.id;
     const ch = currentChapter;
     const vs = verse.number;
 
     try {
-      const crossRes = await fetch(`/api/cross-reference?book=${bookIdx}&chapter=${ch}&verse=${vs}`);
-      const crossData = crossRes.ok ? await crossRes.json() : { success: false, data: '' };
+      // 1. Load Cross References
+      let crossText = '';
+      try {
+        const crossRes = await fetch(`/commentary/cross/${bookId}-${ch}.json`);
+        if (crossRes.ok) {
+          const crossJson = await crossRes.json();
+          crossText = crossJson[vs] || '';
+        }
+      } catch (e) { }
 
-      const mannaRes = await fetch(`/api/commentary?type=manna&book=${bookIdx}&chapter=${ch}&verse=${vs}`);
-      const mannaData = mannaRes.ok ? await mannaRes.json() : { success: false, data: '' };
+      // 2. Load Manna Commentary
+      let mannaText = '';
+      try {
+        const mannaRes = await fetch(`/commentary/manna/${bookId}-${ch}.json`);
+        if (mannaRes.ok) {
+          const mannaJson = await mannaRes.json();
+          mannaText = mannaJson[vs] || '';
+        }
+      } catch (e) { }
 
-      const henryRes = await fetch(`/api/commentary?type=henry&book=${bookIdx}&chapter=${ch}&verse=${vs}`);
-      const henryData = henryRes.ok ? await henryRes.json() : { success: false, data: '' };
+      // 3. Load Matthew Henry Commentary (find nearest verse <= vs)
+      let henryText = '';
+      try {
+        const henryRes = await fetch(`/commentary/henry/${bookId}-${ch}.json`);
+        if (henryRes.ok) {
+          const henryJson = await henryRes.json();
+          if (henryJson[vs]) {
+            henryText = henryJson[vs];
+          } else {
+            // Find closest verse number <= vs
+            const availVerses = Object.keys(henryJson).map(Number).filter((vNum) => vNum <= vs).sort((a, b) => b - a);
+            if (availVerses.length > 0) {
+              const matchedVerse = availVerses[0];
+              const rawText = henryJson[matchedVerse];
+              henryText = `<div style="margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background-color: rgba(245, 158, 11, 0.15); color: #FBBF24; font-size: 11px; font-weight: 800; border: 1px solid rgba(245, 158, 11, 0.25);">💡 이 구절은 ${matchedVerse}절부터 시작하는 통합 주석 문단에 포함되어 있어, 해당 주석 내용으로 안내합니다.</div>` + rawText;
+            }
+          }
+        }
+      } catch (e) { }
 
       setStudyData({
-        cross: crossData.success ? crossData.data : '',
-        manna: mannaData.success ? replaceBlueColors(mannaData.data) : '',
-        henry: henryData.success ? replaceBlueColors(henryData.data) : '',
+        cross: crossText,
+        manna: mannaText ? replaceBlueColors(mannaText) : '',
+        henry: henryText ? replaceBlueColors(henryText) : '',
       });
     } catch (err) {
       console.error('Failed to load study resources:', err);
@@ -333,17 +580,21 @@ export const BibleTab: React.FC<Props> = ({
     }
   };
 
+  const prevTriggerRef = useRef<number>(openHenryTrigger || 0);
+
   useEffect(() => {
-    if (openHenryTrigger && openHenryTrigger > 0) {
+    if (openHenryTrigger && openHenryTrigger > 0 && openHenryTrigger !== prevTriggerRef.current) {
+      prevTriggerRef.current = openHenryTrigger;
       const targetVerse = selectedVerses[0] || verses[0];
       if (targetVerse) {
         setStudyPanelVerse(targetVerse);
         setActiveStudyTab('henry');
-        // Open full-screen study view when triggered from global shortcuts
-        setIsStudyFullscreen(true);
-        setIsStudyPanelOpen(false);
+        setIsStudyPanelOpen(true);
+        setIsStudyFullscreen(false);
         fetchStudyData(targetVerse);
       }
+    } else {
+      prevTriggerRef.current = openHenryTrigger || 0;
     }
   }, [openHenryTrigger]);
 
@@ -385,7 +636,7 @@ export const BibleTab: React.FC<Props> = ({
 
   const renderCrossReferences = (htmlText: string) => {
     if (!htmlText) return <div className="text-zinc-400 dark:text-zinc-500 text-xs py-6 text-center font-bold">관주 데이터가 존재하지 않습니다.</div>;
-    
+
     const items = htmlText.split('<br><br>').filter(Boolean);
     return (
       <div className="space-y-2 select-text pb-6">
@@ -440,11 +691,6 @@ export const BibleTab: React.FC<Props> = ({
 
         setActiveTranslations((prev) => {
           let updated = [...prev];
-          // Force legacy '개역한글' & '공동번역' combo to migrate to HKJV & KJV1769
-          if (updated[0] === '개역한글' || (updated.length > 1 && updated[1] === '공동번역')) {
-            updated[0] = '킹흠정역' as TranslationId;
-            if (updated.length > 1) updated[1] = '킹제임스(KJV1769)' as TranslationId;
-          }
 
           updated = updated.map((item, idx) => {
             if (validIds.includes(item)) return item;
@@ -513,9 +759,7 @@ export const BibleTab: React.FC<Props> = ({
         el.scrollTop = targetTop;
       });
     }
-    window.scrollTo({ top: targetTop, left: 0, behavior: 'instant' as ScrollBehavior });
-    if (document.documentElement) document.documentElement.scrollTop = targetTop;
-    if (document.body) document.body.scrollTop = targetTop;
+    document.querySelector('main')?.scrollTo({ top: targetTop, left: 0, behavior: 'instant' as ScrollBehavior });
   };
 
   const saveCurrentScrollPosition = (bookId = currentBook.id, chapter = currentChapter) => {
@@ -563,16 +807,11 @@ export const BibleTab: React.FC<Props> = ({
     };
   }, [currentBook.id, currentChapter]);
 
-  // Whenever Book or Chapter changes, scroll to top cleanly
-  useEffect(() => {
-    setScrollTop(0);
-  }, [currentBook.id, currentChapter]);
-
   const availableTranslations = customTranslations.length > 0
     ? customTranslations.filter(
-        (item, index, self) =>
-          index === self.findIndex((t) => t.name.trim() === item.name.trim() || t.id === item.id)
-      )
+      (item, index, self) =>
+        index === self.findIndex((t) => t.name.trim() === item.name.trim() || t.id === item.id)
+    )
     : TRANSLATIONS;
 
   const handleTranslationChange = (colIndex: number, newTransId: TranslationId) => {
@@ -585,12 +824,34 @@ export const BibleTab: React.FC<Props> = ({
 
   const verses = getChapterVerses(currentBook.id, currentChapter);
 
-  // E-Book Reader Styling Maps
+  // Whenever Book, Chapter, or targetVerseNumber changes
+  useEffect(() => {
+    if (targetVerseNumber && targetVerseNumber > 0) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`v-${targetVerseNumber}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const matchedVerse = verses.find((v) => v.number === targetVerseNumber);
+          if (matchedVerse) {
+            setSelectedVerses([matchedVerse]);
+          }
+        } else {
+          setScrollTop(0);
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    } else {
+      setScrollTop(0);
+      setSelectedVerses([]);
+    }
+  }, [currentBook.id, currentChapter, targetVerseNumber]);
+
+  // E-Book Reader Styling Maps (Image 1 Warm Parchment & Slate Slate Theme)
   const themeClasses = {
-    light: 'bg-white text-zinc-900 border-zinc-200',
-    sepia: 'bg-[#faf3e0] text-[#4a3b32] border-[#e8dcb8]',
-    dark: 'bg-zinc-900 text-zinc-100 border-zinc-800',
-    eink: 'bg-[#f4f4f2] text-[#111111] border-zinc-400 font-medium',
+    light: 'bg-[#fffbeb] text-[#292524] border-[#fde047]/40 shadow-sm',
+    sepia: 'bg-[#fffbeb] text-[#292524] border-[#fde047]/40 shadow-sm',
+    dark: 'bg-[#0f172a] text-slate-100 border-slate-800 shadow-sm',
+    eink: 'bg-[#fcfbf7] text-[#1c1917] border-zinc-300 font-medium',
   }[readerSettings.theme];
 
   const fontSizeClasses = {
@@ -685,13 +946,39 @@ export const BibleTab: React.FC<Props> = ({
   const copyVersesFormatted = (selectedList: Verse[]) => {
     if (selectedList.length === 0) return;
     const sorted = [...selectedList].sort((a, b) => a.number - b.number);
-    const lines = sorted.map((verse) => {
-      const rawText = verse.text[activeTranslations[0]] || Object.values(verse.text)[0] || '';
-      const text = stripVersePrefix(rawText);
-      const shortBook = currentBook.shortName || currentBook.name;
-      return `[${shortBook} ${currentChapter}:${verse.number}] ${text}`;
-    });
-    const formatted = lines.join('\n');
+    const formatMode = readerSettings.copyFormat || 'verse_break';
+    const shortBook = currentBook.shortName || currentBook.name;
+
+    let formatted = '';
+    if (formatMode === 'continuous') {
+      // 2. 단락 연속형 복사 (한 줄 연속 문단)
+      formatted = sorted
+        .map((verse) => {
+          const rawText = verse.text[activeTranslations[0]] || Object.values(verse.text)[0] || '';
+          const text = stripVersePrefix(rawText);
+          return `${verse.number}. ${text}`;
+        })
+        .join(' ');
+    } else if (formatMode === 'with_ref') {
+      // 3. 출처 자동명시 (예: [창세기 1:1] 태초에...)
+      formatted = sorted
+        .map((verse) => {
+          const rawText = verse.text[activeTranslations[0]] || Object.values(verse.text)[0] || '';
+          const text = stripVersePrefix(rawText);
+          return `[${shortBook} ${currentChapter}:${verse.number}] ${text}`;
+        })
+        .join('\n');
+    } else {
+      // 1. 절번+줄바꿈유지 (기본)
+      formatted = sorted
+        .map((verse) => {
+          const rawText = verse.text[activeTranslations[0]] || Object.values(verse.text)[0] || '';
+          const text = stripVersePrefix(rawText);
+          return `${verse.number}. ${text}`;
+        })
+        .join('\n');
+    }
+
     navigator.clipboard.writeText(formatted);
     setShowCopyToast(true);
     setTimeout(() => setShowCopyToast(false), 2500);
@@ -849,7 +1136,7 @@ export const BibleTab: React.FC<Props> = ({
                   e.stopPropagation();
                   onOpenDictionary(matchObj.codeOrId, isStrong);
                 }}
-                className="text-blue-600 dark:text-blue-400 font-extrabold hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded px-0.5 cursor-pointer transition-all inline-block my-0.5 shadow-2xs"
+                className="text-[#0284c7] dark:text-[#38bdf8] font-extrabold hover:bg-sky-100/50 dark:hover:bg-sky-950/60 rounded px-0.5 cursor-pointer transition-all inline-block my-0.5 shadow-2xs"
                 title={
                   isStrong
                     ? `스트롱코드 #${matchObj.codeOrId} 원어 사전 보기 (Word Study)`
@@ -869,22 +1156,72 @@ export const BibleTab: React.FC<Props> = ({
   return (
     <div className="space-y-1 sm:space-y-2">
       {/* Top Bible Navigation & Parallel Translation Selectors Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-1.5 p-1.5 sm:p-2.5 rounded-none sm:rounded-xl bg-white dark:bg-zinc-900 border-y sm:border border-zinc-200 dark:border-zinc-800 shadow-xs">
-        {/* Book & Chapter Pickers & Quick Overview Buttons */}
-        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 relative" ref={dropdownRef}>
+      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 p-1.5 sm:p-3 rounded-none sm:rounded-2xl bg-[#0f172a]/95 text-slate-100 border-b sm:border border-slate-800 shadow-md backdrop-blur-md">
+        {/* Row 1: Bible Translation Selection & Parallel Comparison Controls (Small Compact Size) */}
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0 max-w-full">
+          {activeTranslations.slice(0, columnCount).map((transId, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-1 bg-[#38bdf8] text-[#0f172a] font-extrabold px-2 py-1.5 rounded-xl border border-sky-300 shadow-xs shrink-0 max-w-[110px] sm:max-w-[125px]"
+            >
+              {columnCount > 1 && (
+                <span className="text-xs font-black text-slate-900 shrink-0">
+                  {idx + 1}:
+                </span>
+              )}
+              <select
+                value={transId}
+                onChange={(e) => handleTranslationChange(idx, e.target.value as TranslationId)}
+                className="bg-transparent text-xs sm:text-sm font-extrabold cursor-pointer focus:outline-none w-full truncate text-[#0f172a]"
+              >
+                {availableTranslations.map((t) => (
+                  <option
+                    key={t.id}
+                    value={t.id}
+                    className="bg-slate-900 text-slate-100 font-bold text-xs"
+                  >
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+
+              {columnCount > 1 && idx > 0 && (
+                <button
+                  onClick={() => setColumnCount((prev) => Math.max(1, prev - 1))}
+                  className="ml-0.5 text-slate-900 hover:text-red-700 p-0.5 rounded transition-colors cursor-pointer shrink-0"
+                  title="대조 컬럼 삭제"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+
+          {columnCount < 4 && (
+            <button
+              onClick={() => setColumnCount((prev) => Math.min(4, prev + 1))}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-700 hover:border-sky-400 bg-[#1e293b] text-sky-300 hover:text-white text-xs font-extrabold transition-all cursor-pointer shrink-0 whitespace-nowrap"
+              title="대조 성경 추가 (최대 4개)"
+            >
+              <span>+ 대조 추가</span>
+            </button>
+          )}
+        </div>
+
+        {/* Row 2: Book & Chapter Pickers */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 relative" ref={dropdownRef}>
           {/* 구약 커스텀 드롭다운 버튼 */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setOpenDropdown(openDropdown === 'OT' ? null : 'OT')}
-              className={`py-1 px-2 sm:px-3 rounded-xl border font-extrabold text-xs sm:text-sm flex items-center gap-1 transition-all cursor-pointer shadow-xs ${
-                currentBook.testament === 'OT'
-                  ? 'border-amber-500 bg-amber-500/15 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500/40'
-                  : 'border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100'
-              }`}
+              className={`py-1.5 px-3 sm:px-4 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${currentBook.testament === 'OT'
+                ? 'bg-[#0284c7] text-white ring-2 ring-sky-400/40'
+                : 'bg-[#1e293b] text-slate-200 hover:bg-[#334155] border border-slate-700'
+                }`}
             >
               <span>{currentBook.testament === 'OT' ? `${currentBook.name} (${currentBook.chapterCount}장)` : '구약성경 (39권)'}</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'OT' ? 'rotate-180 text-amber-600' : ''}`} />
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'OT' ? 'rotate-180 text-sky-300' : ''}`} />
             </button>
 
             {/* 구약성경 (39권) 드롭다운 팝업 - 처음 1.창세기부터 아래로 죽 보임 */}
@@ -906,11 +1243,10 @@ export const BibleTab: React.FC<Props> = ({
                         onChapterChange(1);
                         setOpenDropdown(null);
                       }}
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer text-left ${
-                        isSelected
-                          ? 'bg-amber-500 text-white font-extrabold shadow-xs'
-                          : 'hover:bg-amber-500/10 text-zinc-800 dark:text-zinc-200'
-                      }`}
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer text-left ${isSelected
+                        ? 'bg-amber-500 text-white font-extrabold shadow-xs'
+                        : 'hover:bg-amber-500/10 text-zinc-800 dark:text-zinc-200'
+                        }`}
                     >
                       <span>
                         <span className="text-zinc-400 font-mono mr-1.5">{idx + 1}.</span>
@@ -931,22 +1267,21 @@ export const BibleTab: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setOpenDropdown(openDropdown === 'NT' ? null : 'NT')}
-              className={`py-1 px-2 sm:px-3 rounded-xl border font-extrabold text-xs sm:text-sm flex items-center gap-1 transition-all cursor-pointer shadow-xs ${
-                currentBook.testament === 'NT'
-                  ? 'border-indigo-500 bg-indigo-500/15 text-indigo-900 dark:text-indigo-200 ring-1 ring-indigo-500/40'
-                  : 'border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100'
-              }`}
+              className={`py-1.5 px-3 sm:px-4 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${currentBook.testament === 'NT'
+                ? 'bg-[#0284c7] text-white ring-2 ring-sky-400/40'
+                : 'bg-[#1e293b] text-slate-200 hover:bg-[#334155] border border-slate-700'
+                }`}
             >
               <span>{currentBook.testament === 'NT' ? `${currentBook.name} (${currentBook.chapterCount}장)` : '신약성경 (27권)'}</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'NT' ? 'rotate-180 text-indigo-600' : ''}`} />
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'NT' ? 'rotate-180 text-sky-300' : ''}`} />
             </button>
 
             {/* 신약성경 (27권) 드롭다운 팝업 - 처음 1.마태복음부터 아래로 죽 보임 */}
             {openDropdown === 'NT' && (
-              <div className="absolute left-0 top-full mt-1.5 w-60 max-h-80 overflow-y-auto bg-white dark:bg-zinc-900 border border-indigo-500/40 rounded-2xl shadow-2xl z-50 p-1.5 animate-in fade-in duration-150 scrollbar-thin">
-                <div className="px-3 py-1.5 text-[11px] font-extrabold text-indigo-700 dark:text-indigo-400 border-b border-zinc-100 dark:border-zinc-800 mb-1 sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xs flex items-center justify-between">
+              <div className="absolute left-0 top-full mt-1.5 w-60 max-h-80 overflow-y-auto bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 p-1.5 animate-in fade-in duration-150 scrollbar-thin text-slate-100">
+                <div className="px-3 py-1.5 text-[11px] font-extrabold text-sky-400 border-b border-slate-800 mb-1 sticky top-0 bg-slate-900/95 backdrop-blur-xs flex items-center justify-between">
                   <span>✝️ 신약성경 (27권 목록)</span>
-                  <span className="text-[10px] text-zinc-400">1.마태복음 ~ 27.요한계시록</span>
+                  <span className="text-[10px] text-slate-400">1.마태복음 ~ 27.요한계시록</span>
                 </div>
                 {BIBLE_BOOKS.filter((b) => b.testament === 'NT').map((b, idx) => {
                   const isSelected = currentBook.id === b.id;
@@ -960,17 +1295,16 @@ export const BibleTab: React.FC<Props> = ({
                         onChapterChange(1);
                         setOpenDropdown(null);
                       }}
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer text-left ${
-                        isSelected
-                          ? 'bg-indigo-600 text-white font-extrabold shadow-xs'
-                          : 'hover:bg-indigo-500/10 text-zinc-800 dark:text-zinc-200'
-                      }`}
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer text-left ${isSelected
+                        ? 'bg-[#0284c7] text-white font-extrabold shadow-xs'
+                        : 'hover:bg-slate-800 text-slate-200'
+                        }`}
                     >
                       <span>
-                        <span className="text-zinc-400 font-mono mr-1.5">{idx + 1}.</span>
+                        <span className="text-slate-400 font-mono mr-1.5">{idx + 1}.</span>
                         {b.name}
                       </span>
-                      <span className={`text-[10px] ${isSelected ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                      <span className={`text-[10px] ${isSelected ? 'text-white' : 'text-sky-400'}`}>
                         {b.chapterCount}장
                       </span>
                     </button>
@@ -981,19 +1315,19 @@ export const BibleTab: React.FC<Props> = ({
           </div>
 
           {/* 장 선택 커스텀 드롭다운 버튼 */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setOpenDropdown(openDropdown === 'chapter' ? null : 'chapter')}
-              className="py-1 px-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-black text-xs sm:text-sm focus:ring-2 focus:ring-amber-500 flex items-center gap-1 cursor-pointer shadow-xs font-mono"
+              className="py-1.5 px-3 rounded-xl border border-slate-700 bg-[#334155] text-slate-100 font-black text-xs sm:text-sm flex items-center gap-1 cursor-pointer shadow-xs font-mono hover:bg-slate-600 transition-colors"
             >
               <span>{currentChapter}장</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'chapter' ? 'rotate-180 text-amber-600' : ''}`} />
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'chapter' ? 'rotate-180 text-sky-300' : ''}`} />
             </button>
 
             {/* 장 선택 드롭다운 팝업 - 1장부터 아래로 죽 보임 */}
             {openDropdown === 'chapter' && (
-              <div className="absolute left-0 top-full mt-1.5 w-48 max-h-72 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-2xl shadow-2xl z-50 p-2 animate-in fade-in duration-150 scrollbar-thin">
+              <div className="absolute right-0 top-full mt-1.5 w-48 max-h-72 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-2xl shadow-2xl z-50 p-2 animate-in fade-in duration-150 scrollbar-thin">
                 <div className="px-2 py-1 text-[11px] font-extrabold text-zinc-500 border-b border-zinc-100 dark:border-zinc-800 mb-1 sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xs">
                   {currentBook.name} 장 선택 (1~{currentBook.chapterCount}장)
                 </div>
@@ -1010,11 +1344,10 @@ export const BibleTab: React.FC<Props> = ({
                           onChapterChange(chNum);
                           setOpenDropdown(null);
                         }}
-                        className={`py-1.5 rounded-lg text-xs font-extrabold font-mono transition-all cursor-pointer text-center ${
-                          isSelected
-                            ? 'bg-amber-500 text-white shadow-xs scale-105'
-                            : 'hover:bg-amber-500/10 text-zinc-800 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800'
-                        }`}
+                        className={`py-1.5 rounded-lg text-xs font-extrabold font-mono transition-all cursor-pointer text-center ${isSelected
+                          ? 'bg-amber-500 text-white shadow-xs scale-105'
+                          : 'hover:bg-amber-500/10 text-zinc-800 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800'
+                          }`}
                       >
                         {chNum}
                       </button>
@@ -1025,62 +1358,14 @@ export const BibleTab: React.FC<Props> = ({
             )}
           </div>
         </div>
-
-        {/* Bible Translation Selection & Parallel Comparison Controls */}
-        <div className="w-full sm:w-auto flex flex-wrap items-center gap-1 sm:gap-1.5 py-0.5 shrink-0 max-w-full">
-          {activeTranslations.slice(0, columnCount).map((transId, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-1 bg-amber-500/10 dark:bg-amber-500/20 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-amber-500/40 text-amber-900 dark:text-amber-200 shadow-2xs shrink-0 max-w-[130px] sm:max-w-[180px]"
-            >
-              {columnCount > 1 && (
-                <span className="text-xs font-black text-amber-700 dark:text-amber-300 shrink-0">
-                  {idx + 1}:
-                </span>
-              )}
-              <select
-                value={transId}
-                onChange={(e) => handleTranslationChange(idx, e.target.value as TranslationId)}
-                className="bg-transparent text-xs sm:text-sm font-extrabold cursor-pointer focus:outline-none max-w-[85px] sm:max-w-[140px] truncate"
-              >
-                {availableTranslations.map((t) => (
-                  <option
-                    key={t.id}
-                    value={t.id}
-                    className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 font-bold text-xs"
-                  >
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-
-              {columnCount > 1 && idx > 0 && (
-                <button
-                  onClick={() => setColumnCount((prev) => Math.max(1, prev - 1))}
-                  className="ml-0.5 text-zinc-400 hover:text-red-500 p-0.5 rounded transition-colors cursor-pointer shrink-0"
-                  title="대조 컬럼 삭제"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-
-          {columnCount < 4 && (
-            <button
-              onClick={() => setColumnCount((prev) => Math.min(4, prev + 1))}
-              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-dashed border-amber-500/50 hover:border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 text-xs font-extrabold transition-all cursor-pointer shrink-0 whitespace-nowrap"
-              title="대조 성경 추가 (최대 4개)"
-            >
-              <span>+ 대조 추가</span>
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Main Scripture Passage View Area */}
+      {/* Main Scripture Passage View Area (Full Vertical Scroll & Horizontal Touch Swipe) */}
       <div
-        className={`p-2 sm:p-5 rounded-none sm:rounded-xl border-y sm:border shadow-xs min-h-[400px] ${themeClasses} ${fontFamilyClasses} select-text`}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className={`p-2 sm:p-5 rounded-none sm:rounded-xl border-y sm:border shadow-xs min-h-[400px] ${themeClasses} ${fontFamilyClasses} select-text relative transition-opacity duration-200 ${isSwipingSmoothly ? 'opacity-50' : 'opacity-100'
+          }`}
       >
         {/* Chapter Header */}
         <div className="flex items-center justify-between pb-2.5 border-b border-current/15 mb-3 select-none">
@@ -1130,21 +1415,23 @@ export const BibleTab: React.FC<Props> = ({
 
             const highlightStyle = isHighlighted
               ? {
-                  yellow: 'bg-yellow-200/80 text-yellow-950 dark:bg-yellow-500/30 dark:text-yellow-100',
-                  green: 'bg-emerald-200/80 text-emerald-950 dark:bg-emerald-500/30 dark:text-emerald-100',
-                  blue: 'bg-sky-200/80 text-sky-950 dark:bg-sky-500/30 dark:text-sky-100',
-                  pink: 'bg-pink-200/80 text-pink-950 dark:bg-pink-500/30 dark:text-pink-100',
-                  purple: 'bg-purple-200/80 text-purple-950 dark:bg-purple-500/30 dark:text-purple-100',
-                }[isHighlighted.color]
+                yellow: 'bg-yellow-200/80 text-yellow-950 dark:bg-yellow-500/30 dark:text-yellow-100',
+                green: 'bg-emerald-200/80 text-emerald-950 dark:bg-emerald-500/30 dark:text-emerald-100',
+                blue: 'bg-sky-200/80 text-sky-950 dark:bg-sky-500/30 dark:text-sky-100',
+                pink: 'bg-pink-200/80 text-pink-950 dark:bg-pink-500/30 dark:text-pink-100',
+                purple: 'bg-purple-200/80 text-purple-950 dark:bg-purple-500/30 dark:text-purple-100',
+              }[isHighlighted.color]
               : '';
 
             const isSelected = selectedVerses.some((v) => v.number === verse.number);
+            const isAudioCurrentVerse = audioState?.isPlaying && (audioState?.currentVerseIndex + 1) === verse.number;
+            const audioActiveStyle = isAudioCurrentVerse ? 'ring-2 ring-amber-400 dark:ring-amber-500 bg-amber-400/20 dark:bg-amber-400/15 shadow-md scale-[1.01]' : '';
             const selectionStyle = isSelected ? 'ring-2 ring-amber-500 bg-amber-500/10 dark:bg-amber-500/5' : '';
 
             return (
-              <div id={`v-${verse.number}`} key={verse.number} className="space-y-1.5">
+              <div id={`v-${verse.number}`} key={verse.number} className="space-y-1.5 transition-transform duration-300">
                 <div
-                  className={`p-1 sm:p-1.5 rounded-lg transition-all cursor-pointer group hover:bg-black/5 dark:hover:bg-white/5 relative ${highlightStyle} ${selectionStyle}`}
+                  className={`p-1 sm:p-1.5 rounded-lg transition-all cursor-pointer group hover:bg-black/5 dark:hover:bg-white/5 relative ${highlightStyle} ${selectionStyle} ${audioActiveStyle}`}
                   onClick={() => {
                     setSelectedVerses((prev) => {
                       const exists = prev.some((v) => v.number === verse.number);
@@ -1157,15 +1444,14 @@ export const BibleTab: React.FC<Props> = ({
                   }}
                 >
                   <div
-                    className={`grid gap-1.5 sm:gap-3 ${
-                      columnCount === 1
-                        ? 'grid-cols-1'
-                        : columnCount === 2
+                    className={`grid gap-1.5 sm:gap-3 ${columnCount === 1
+                      ? 'grid-cols-1'
+                      : columnCount === 2
                         ? 'grid-cols-2'
                         : columnCount === 3
-                        ? 'grid-cols-1 sm:grid-cols-3'
-                        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
-                    }`}
+                          ? 'grid-cols-1 sm:grid-cols-3'
+                          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+                      }`}
                   >
                     {activeTranslations.slice(0, columnCount).map((transId, colIdx) => {
                       const rawVerseText = getVerseTextForTranslation(verse, transId);
@@ -1176,9 +1462,9 @@ export const BibleTab: React.FC<Props> = ({
                           key={`${transId}-${colIdx}`}
                           className={`${fontSizeClasses} ${lineHeightClasses} ${letterSpacingClasses}`}
                         >
-                          {/* Verse Number & Bookmark icon */}
+                          {/* Verse Number (Image 1 Sky Blue Color) */}
                           {readerSettings.showVerseNumbers && (
-                            <span className="font-mono font-bold text-amber-600 dark:text-amber-400 mr-2 text-xs opacity-90 select-none">
+                            <span className="font-mono font-black text-[#0284c7] dark:text-[#38bdf8] mr-2 text-xs sm:text-sm select-none">
                               {verse.number}
                             </span>
                           )}
@@ -1273,11 +1559,10 @@ export const BibleTab: React.FC<Props> = ({
           <button
             type="button"
             onClick={toggleChapterRead}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer shadow-xs active:scale-95 ${
-              isChapterRead
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                : 'bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200'
-            }`}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer shadow-xs active:scale-95 ${isChapterRead
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+              : 'bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200'
+              }`}
             title={isChapterRead ? '클릭하여 읽지않음 상태로 변경' : '클릭하여 읽었음으로 표시'}
           >
             <CheckCircle2 className={`w-4 h-4 ${isChapterRead ? 'text-white' : 'text-zinc-400'}`} />
@@ -1306,7 +1591,45 @@ export const BibleTab: React.FC<Props> = ({
             <span>⚠️ 데이터 오류 제보 및 수정 요청</span>
           </button>
         </div>
+
       </div>
+
+      {/* Draggable Floating Audio Speaker Button (Move anywhere by dragging!) */}
+      {onToggleAudioPlayer && (
+        <div
+          style={
+            floatingPos
+              ? { left: `${floatingPos.x}px`, top: `${floatingPos.y}px`, right: 'auto', bottom: 'auto' }
+              : {}
+          }
+          className={
+            floatingPos
+              ? 'fixed z-60 touch-none select-none'
+              : 'fixed bottom-28 right-4 sm:bottom-32 sm:right-6 z-60 touch-none select-none'
+          }
+        >
+          <button
+            type="button"
+            onTouchStart={handleSpeakerTouchStart}
+            onTouchMove={handleSpeakerTouchMove}
+            onTouchEnd={handleSpeakerTouchEnd}
+            onMouseDown={handleSpeakerMouseDown}
+            onMouseMove={handleSpeakerMouseMove}
+            onMouseUp={handleSpeakerMouseUp}
+            style={{ touchAction: 'none' }}
+            className={`p-2 sm:p-2.5 rounded-full flex items-center gap-1 shadow-lg transition-all cursor-move border border-white dark:border-slate-800 ${audioState?.isPlaying
+              ? 'bg-amber-500 text-zinc-950 ring-2 ring-amber-500/50 animate-pulse shadow-amber-500/60'
+              : 'bg-[#0284c7] hover:bg-sky-500 text-white shadow-sky-600/40'
+              }`}
+            title="드래그하여 원하는 위치로 이동 / 클릭하여 성경 오디오 재생"
+          >
+            <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 pointer-events-none" />
+            <span className="text-[10px] font-black pr-0.5 hidden sm:inline pointer-events-none">
+              {audioState?.isPlaying ? '낭독 중' : '오디오'}
+            </span>
+          </button>
+        </div>
+      )}
 
 
 
@@ -1365,21 +1688,19 @@ export const BibleTab: React.FC<Props> = ({
                           });
                         }}
                         title={`${color} 형광펜 일괄 적용`}
-                        className={`w-6 h-6 rounded-full border transition-all flex items-center justify-center cursor-pointer ${
-                          isSelectedColor
-                            ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110 border-transparent shadow-md'
-                            : 'border-white/30 hover:scale-110 opacity-80 hover:opacity-100'
-                        } ${
-                          color === 'yellow'
+                        className={`w-6 h-6 rounded-full border transition-all flex items-center justify-center cursor-pointer ${isSelectedColor
+                          ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110 border-transparent shadow-md'
+                          : 'border-white/30 hover:scale-110 opacity-80 hover:opacity-100'
+                          } ${color === 'yellow'
                             ? 'bg-yellow-400'
                             : color === 'green'
-                            ? 'bg-emerald-400'
-                            : color === 'blue'
-                            ? 'bg-sky-400'
-                            : color === 'pink'
-                            ? 'bg-pink-400'
-                            : 'bg-purple-400'
-                        }`}
+                              ? 'bg-emerald-400'
+                              : color === 'blue'
+                                ? 'bg-sky-400'
+                                : color === 'pink'
+                                  ? 'bg-pink-400'
+                                  : 'bg-purple-400'
+                          }`}
                       >
                         {isSelectedColor && <Check className="w-3.5 h-3.5 text-zinc-950 font-black" />}
                       </button>
@@ -1478,30 +1799,30 @@ export const BibleTab: React.FC<Props> = ({
                   <span>오류 제보</span>
                 </button>
 
-                {/* Study resource trigger button */}
-                <button
-                  onClick={() => {
-                    const targetVerse = selectedVerses[0];
-                    if (targetVerse) {
-                      setStudyPanelVerse(targetVerse);
-                      setIsStudyPanelOpen(true);
-                      fetchStudyData(targetVerse);
-                    }
-                    setSelectedVerses([]);
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium cursor-pointer"
-                  title="선택 구절의 관주 및 주석 연구하기"
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-                  <span>성경연구</span>
-                </button>
+
 
                 {/* Verse Card Generator Link */}
                 <button
                   onClick={() => {
                     const sorted = [...selectedVerses].sort((a, b) => a.number - b.number);
-                    const ref = `${currentBook.name} ${currentChapter}:${sorted.map(v => v.number).join(',')}`;
-                    const text = sorted.map(v => v.text['KRV'] || Object.values(v.text)[0] || '').join('\n');
+                    const shortBook = currentBook.shortName || currentBook.name;
+                    const ref = `${shortBook} ${currentChapter}:${sorted.map(v => v.number).join(',')}`;
+                    const formatMode = readerSettings.copyFormat || 'verse_break';
+
+                    let text = '';
+                    if (formatMode === 'continuous') {
+                      text = sorted
+                        .map(v => `${v.number}. ${stripVersePrefix(v.text['KRV'] || Object.values(v.text)[0] || '')}`)
+                        .join(' ');
+                    } else if (formatMode === 'with_ref') {
+                      text = sorted
+                        .map(v => `[${shortBook} ${currentChapter}:${v.number}] ${stripVersePrefix(v.text['KRV'] || Object.values(v.text)[0] || '')}`)
+                        .join('\n');
+                    } else {
+                      text = sorted
+                        .map(v => `${v.number}. ${stripVersePrefix(v.text['KRV'] || Object.values(v.text)[0] || '')}`)
+                        .join('\n');
+                    }
                     onCreateVerseCard(text, ref);
                     setSelectedVerses([]);
                   }}
@@ -1540,15 +1861,13 @@ export const BibleTab: React.FC<Props> = ({
         currentBook={currentBook}
       />
 
-      {/* Bible Study Integration Drawer Panel */}
+      {/* Bible Study Integration Drawer Panel (Full Screen Panel above bottom nav) */}
       {isStudyPanelOpen && studyPanelVerse && (
-        <div className="fixed inset-x-0 bottom-0 z-50 animate-in slide-in-from-bottom duration-300">
-          <div 
-            style={{ height: `${studyPanelHeight}px` }}
-            className="w-full max-w-[calc(100%_-_32px)] mx-auto px-4 sm:px-0 backdrop-blur-xl bg-zinc-900/95 text-white border-t border-zinc-700/80 rounded-t-3xl shadow-[0_-15px_30px_rgba(0,0,0,0.5)] flex flex-col transition-all duration-75"
-          >
+        <div className="fixed inset-x-0 top-0 bottom-14 md:bottom-0 z-50 animate-in slide-in-from-bottom duration-200 bg-zinc-950/98 text-white flex flex-col shadow-2xl">
+          <div className="w-full h-full flex flex-col pointer-events-auto">
             {/* Top Drag Handle Indicator Bar for Resizing */}
-            <div 
+            <div
+              ref={dragHandleRef}
               onMouseDown={(e) => handleHeightDragStart(e.clientY)}
               onTouchStart={(e) => handleHeightDragStart(e.touches[0].clientY)}
               className="w-full h-5 flex items-center justify-center cursor-ns-resize shrink-0 select-none group/handle bg-zinc-950/20 hover:bg-zinc-950/50 border-b border-zinc-800/30 transition-colors"
@@ -1557,54 +1876,62 @@ export const BibleTab: React.FC<Props> = ({
               <div className="w-12 h-1 rounded-full bg-zinc-600 group-hover/handle:bg-amber-500 transition-colors" />
             </div>
 
-            {/* Drawer Header */}
-            <div className="px-5 py-3 border-b border-zinc-800/80 flex items-center justify-between shrink-0 select-none">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded-lg bg-amber-500/10 text-amber-500 font-extrabold text-xs">📖 성경연구</span>
-                <h3 className="text-sm font-black text-amber-400">
-                  {currentBook.name} {currentChapter}장 {studyPanelVerse.number}절
-                </h3>
+            {/* Sticky Fixed Drawer Header Container (Title + Tabs) */}
+            <div className="sticky top-0 z-20 bg-zinc-950/98 backdrop-blur-md shrink-0">
+              {/* Drawer Header */}
+              <div className="px-5 py-3 border-b border-zinc-800/80 flex items-center justify-between select-none">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-amber-500/10 text-amber-500 font-extrabold text-xs">📖 성경연구</span>
+                  <h3 className="text-sm font-black text-amber-400">
+                    {currentBook.name} {currentChapter}장 {studyPanelVerse.number}절
+                  </h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsStudyPanelOpen(false);
+                    setStudyPanelVerse(null);
+                  }}
+                  className="p-1 rounded-full hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-white cursor-pointer"
+                  title="연구 패널 닫기"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  setIsStudyPanelOpen(false);
-                  setStudyPanelVerse(null);
-                }}
-                className="p-1 rounded-full hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-white cursor-pointer"
-                title="연구 패널 닫기"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Drawer Tabs Navigation */}
-            <div className="px-5 py-2.5 bg-zinc-950/40 border-b border-zinc-800/60 flex items-center gap-2 shrink-0 select-none">
-              {(
-                [
-                  { id: 'cross', label: '🔗 관련 관주' },
-                  { id: 'manna', label: '💡 만나주석' },
-                  { id: 'henry', label: '✍️ 매튜헨리' },
-                ] as const
-              ).map((tab) => {
-                const isActive = activeStudyTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveStudyTab(tab.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      isActive
+              {/* Drawer Tabs Navigation */}
+              <div className="px-5 py-2.5 bg-zinc-950/90 border-b border-zinc-800/60 flex items-center gap-2 select-none">
+                {(
+                  [
+                    { id: 'cross', label: '🔗 관련 관주' },
+                    { id: 'manna', label: '💡 만나주석' },
+                    { id: 'henry', label: '✍️ 매튜헨리' },
+                  ] as const
+                ).map((tab) => {
+                  const isActive = activeStudyTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveStudyTab(tab.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
                         ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
                         : 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+                        }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Drawer Body (Content Load Area) */}
-            <div className="flex-1 overflow-y-auto p-5 min-h-0">
+            {/* Drawer Body (Content Load Area with Pinch Zoom support) */}
+            <div
+              onTouchStart={handleStudyTouchStart}
+              onTouchMove={handleStudyTouchMove}
+              onTouchEnd={handleStudyTouchEnd}
+              className="flex-1 overflow-y-auto p-5 min-h-0 select-text"
+              style={{ fontSize: `${studyFontSize}px` }}
+            >
               {isStudyLoading ? (
                 <div className="h-full flex flex-col items-center justify-center gap-2.5 py-12">
                   <div className="w-7 h-7 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -1618,7 +1945,8 @@ export const BibleTab: React.FC<Props> = ({
                     <div className="space-y-3 select-text pb-6">
                       {studyData.manna ? (
                         <div
-                          className="text-xs leading-relaxed text-zinc-200 whitespace-pre-wrap select-text"
+                          style={{ fontSize: `${studyFontSize}px` }}
+                          className="leading-relaxed text-zinc-200 whitespace-pre-wrap select-text"
                           dangerouslySetInnerHTML={{ __html: studyData.manna }}
                         />
                       ) : (
@@ -1631,7 +1959,8 @@ export const BibleTab: React.FC<Props> = ({
                     <div className="space-y-3 select-text pb-6">
                       {studyData.henry ? (
                         <div
-                          className="text-xs leading-relaxed text-zinc-200 whitespace-pre-wrap select-text"
+                          style={{ fontSize: `${studyFontSize}px` }}
+                          className="leading-relaxed text-zinc-200 whitespace-pre-wrap select-text"
                           dangerouslySetInnerHTML={{ __html: studyData.henry }}
                         />
                       ) : (
@@ -1669,11 +1998,10 @@ export const BibleTab: React.FC<Props> = ({
                     <button
                       key={tab.id}
                       onClick={() => setActiveStudyTab(tab.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        activeStudyTab === tab.id
-                          ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
-                          : 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeStudyTab === tab.id
+                        ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
+                        : 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
                     >
                       {tab.label}
                     </button>
@@ -1692,20 +2020,26 @@ export const BibleTab: React.FC<Props> = ({
               </div>
             </div>
 
-            <div className="p-6">
+            <div
+              onTouchStart={handleStudyTouchStart}
+              onTouchMove={handleStudyTouchMove}
+              onTouchEnd={handleStudyTouchEnd}
+              className="p-6 select-text"
+              style={{ fontSize: `${studyFontSize}px` }}
+            >
               {isStudyLoading ? (
                 <div className="h-96 flex flex-col items-center justify-center gap-2.5 py-12">
                   <div className="w-7 h-7 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
                   <span className="text-sm text-zinc-400 font-bold animate-pulse">데이터를 불러오는 중...</span>
                 </div>
               ) : (
-                <div className="prose prose-invert max-w-none text-sm leading-relaxed">
+                <div className="prose prose-invert max-w-none leading-relaxed" style={{ fontSize: `${studyFontSize}px` }}>
                   {activeStudyTab === 'cross' && renderCrossReferences(studyData.cross)}
 
                   {activeStudyTab === 'manna' && (
                     <div>
                       {studyData.manna ? (
-                        <div dangerouslySetInnerHTML={{ __html: studyData.manna }} />
+                        <div style={{ fontSize: `${studyFontSize}px` }} dangerouslySetInnerHTML={{ __html: studyData.manna }} />
                       ) : (
                         <div className="text-zinc-400 text-center py-12 font-bold">만나주석 데이터가 존재하지 않습니다.</div>
                       )}
@@ -1715,7 +2049,7 @@ export const BibleTab: React.FC<Props> = ({
                   {activeStudyTab === 'henry' && (
                     <div>
                       {studyData.henry ? (
-                        <div dangerouslySetInnerHTML={{ __html: studyData.henry }} />
+                        <div style={{ fontSize: `${studyFontSize}px` }} dangerouslySetInnerHTML={{ __html: studyData.henry }} />
                       ) : (
                         <div className="text-zinc-400 text-center py-12 font-bold">매튜헨리주석 데이터가 존재하지 않습니다.</div>
                       )}

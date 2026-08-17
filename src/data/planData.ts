@@ -52,28 +52,16 @@ function generate365Plan(): PlanDay[] {
     const endIndex = Math.floor((day * totalChapters) / 365);
     const dayChapters = allChapters.slice(startIndex, endIndex);
 
-    // Group chapters by book into passage ranges
-    const passages: { bookId: string; bookName: string; startChapter: number; endChapter: number }[] = [];
-    let currentPassage: { bookId: string; bookName: string; startChapter: number; endChapter: number } | null = null;
+    // Keep each 1-chapter separate as requested (e.g. 창세기 1장, 창세기 2장...)
+    const passages = dayChapters.map((ch) => ({
+      bookId: ch.bookId,
+      bookName: ch.bookName,
+      startChapter: ch.chapter,
+      endChapter: ch.chapter,
+    }));
 
-    for (const ch of dayChapters) {
-      if (!currentPassage || currentPassage.bookId !== ch.bookId) {
-        if (currentPassage) passages.push(currentPassage);
-        currentPassage = {
-          bookId: ch.bookId,
-          bookName: ch.bookName,
-          startChapter: ch.chapter,
-          endChapter: ch.chapter,
-        };
-      } else {
-        currentPassage.endChapter = ch.chapter;
-      }
-    }
-    if (currentPassage) passages.push(currentPassage);
-
-    // Build passage description string
     const passageText = passages
-      .map((p) => (p.startChapter === p.endChapter ? `${p.bookName} ${p.startChapter}장` : `${p.bookName} ${p.startChapter}~${p.endChapter}장`))
+      .map((p) => `${p.bookName} ${p.startChapter}장`)
       .join(', ');
 
     const title = customTitles[day] || passageText;
@@ -219,26 +207,15 @@ function generateChronological365Plan(): PlanDay[] {
     const endIndex = Math.floor((day * totalChapters) / 365);
     const dayChapters = allChronoChapters.slice(startIndex, endIndex);
 
-    const passages: { bookId: string; bookName: string; startChapter: number; endChapter: number }[] = [];
-    let currentPassage: { bookId: string; bookName: string; startChapter: number; endChapter: number } | null = null;
-
-    for (const ch of dayChapters) {
-      if (!currentPassage || currentPassage.bookId !== ch.bookId) {
-        if (currentPassage) passages.push(currentPassage);
-        currentPassage = {
-          bookId: ch.bookId,
-          bookName: ch.bookName,
-          startChapter: ch.chapter,
-          endChapter: ch.chapter,
-        };
-      } else {
-        currentPassage.endChapter = ch.chapter;
-      }
-    }
-    if (currentPassage) passages.push(currentPassage);
+    const passages = dayChapters.map((ch) => ({
+      bookId: ch.bookId,
+      bookName: ch.bookName,
+      startChapter: ch.chapter,
+      endChapter: ch.chapter,
+    }));
 
     const passageText = passages
-      .map((p) => (p.startChapter === p.endChapter ? `${p.bookName} ${p.startChapter}장` : `${p.bookName} ${p.startChapter}~${p.endChapter}장`))
+      .map((p) => `${p.bookName} ${p.startChapter}장`)
       .join(', ');
 
     plan.push({
@@ -303,24 +280,16 @@ function generateRandom365Plan(): PlanDay[] {
 
     const dayChapters = [...otSel, psaCh, ...ntSel].filter(Boolean);
 
-    // 연속된 동일 책의 장들은 하나의 구절 범위로 묶기
-    const passages: { bookId: string; bookName: string; startChapter: number; endChapter: number }[] = [];
-    for (const ch of dayChapters) {
-      const last = passages[passages.length - 1];
-      if (last && last.bookId === ch.bookId && last.endChapter + 1 === ch.chapter) {
-        last.endChapter = ch.chapter;
-      } else {
-        passages.push({
-          bookId: ch.bookId,
-          bookName: ch.bookName,
-          startChapter: ch.chapter,
-          endChapter: ch.chapter,
-        });
-      }
-    }
+    // Keep each 1-chapter separate as requested
+    const passages = dayChapters.map((ch) => ({
+      bookId: ch.bookId,
+      bookName: ch.bookName,
+      startChapter: ch.chapter,
+      endChapter: ch.chapter,
+    }));
 
     const passageText = passages
-      .map((p) => (p.startChapter === p.endChapter ? `${p.bookName} ${p.startChapter}장` : `${p.bookName} ${p.startChapter}~${p.endChapter}장`))
+      .map((p) => `${p.bookName} ${p.startChapter}장`)
       .join(' + ');
 
     plan.push({

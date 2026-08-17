@@ -23,24 +23,24 @@ export interface DesignPresetOption {
 export const DESIGN_PRESETS: DesignPresetOption[] = [
   {
     id: 'classic',
-    name: '양식 1. 클래식 성지 양장본 (Classic Sacred Parchment)',
-    badge: '전통 양장 성경 스타일',
-    subtitle: '거룩하고 장엄한 전통 가죽 커버 & 파피루스 세피아 양지',
+    name: '양식 1. 이미지1 럭셔리 파피루스 (Slate & Warm Parchment)',
+    badge: '추천 1위 감성 프리셋',
+    subtitle: '딥 슬레이트 헤더 & 포근한 고급 아이보리 파피루스 양지 뷰어',
     description:
-      '전통 양장본 성경의 그윽한 감성을 담았습니다. 따뜻한 세피아 톤 캔버스, 정갈한 명조 서체, 골드 버건디 포인트로 거룩한 성경독서 분위기를 선호하는 성도님께 추천합니다.',
+      '이미지 1의 고품격 분위기를 완벽 반영했습니다. 눈이 편안한 프리미엄 아이보리 캔버스, 산뜻한 코발트 블루 절 번호 및 강조 단어 하이라이트, 딥 슬레이트 네이비 헤더 컨트롤로 세련된 독서 경험을 선사합니다.',
     readerConfig: {
       theme: 'sepia',
       fontFamily: 'serif',
       lineHeight: 'normal',
       letterSpacing: 'normal',
     },
-    bgClass: 'bg-[#faf3e0]',
-    borderClass: 'border-[#e2d3b2]',
-    accentClass: 'bg-amber-700 text-white',
-    textColor: 'text-[#4a3b32]',
-    cardStyle: 'border-2 border-amber-800/20 shadow-md font-serif',
+    bgClass: 'bg-[#fffbeb]',
+    borderClass: 'border-[#fef08a]',
+    accentClass: 'bg-[#0284c7] text-white',
+    textColor: 'text-[#292524]',
+    cardStyle: 'border-2 border-amber-600/20 shadow-md font-serif',
     previewText: '태초에 하나님이 천지를 창조하시니라 (창세기 1:1)',
-    features: ['세피아 앤틱 양지 캔버스', '고전 정갈 명조 서체 (Serif)', '양장본 금박 장식 헤더'],
+    features: ['포근한 아이보리 양지 캔버스', '코발트 블루 절 번호 & 키워드 하이라이트', '딥 슬레이트 네이비 헤더'],
   },
   {
     id: 'modern',
@@ -102,7 +102,7 @@ export const DesignStyleModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="w-full max-w-3xl rounded-3xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-zinc-900 dark:text-zinc-100 flex flex-col max-h-[90vh]">
         {/* Modal Top Header */}
         <div className="p-6 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-white flex items-center justify-between shrink-0">

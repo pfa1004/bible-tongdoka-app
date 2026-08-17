@@ -32,7 +32,41 @@ export const PlanModal: React.FC<Props> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'plan' | 'streak' | 'alarm'>('plan');
 
+  const [readChapters, setReadChapters] = React.useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('bible_read_chapters');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Re-read readChapters whenever modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      try {
+        const saved = localStorage.getItem('bible_read_chapters');
+        if (saved) setReadChapters(JSON.parse(saved));
+      } catch {}
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const isDayCompletedByReadChapters = (dayData: PlanDay) => {
+    if (settings.completedDays.includes(dayData.day)) return true;
+    if (!dayData.passages || dayData.passages.length === 0) return false;
+    return dayData.passages.every((p) => {
+      for (let ch = p.startChapter; ch <= p.endChapter; ch++) {
+        if (!readChapters.includes(`${p.bookId}_${ch}`)) return false;
+      }
+      return true;
+    });
+  };
+
+  const isChapterReadInPassage = (bookId: string, chapter: number) => {
+    return readChapters.includes(`${bookId}_${chapter}`);
+  };
 
   const isChronoMode = settings.mode === 'free';
   const isRandomMode = settings.mode === 'random';
@@ -41,18 +75,60 @@ export const PlanModal: React.FC<Props> = ({
     : isChronoMode
     ? CHRONOLOGICAL_PLAN_DAYS
     : SEQUENTIAL_PLAN_DAYS;
-  const nextReadingDay = activePlanDays.find((d) => !settings.completedDays.includes(d.day)) || activePlanDays[0];
+  const nextReadingDay = activePlanDays.find((d) => !isDayCompletedByReadChapters(d)) || activePlanDays[0];
 
   const totalChapters = 1189;
-  const completedCount = settings.completedDays.length * 3.25; // approx
+  const completedCount = readChapters.length;
   const progressPercent = Math.min(100, Math.round((completedCount / totalChapters) * 100));
 
+  const toggleChapterCompletion = (bookId: string, chapter: number) => {
+    const key = `${bookId}_${chapter}`;
+    let updatedChapters = [...readChapters];
+    if (updatedChapters.includes(key)) {
+      updatedChapters = updatedChapters.filter((k) => k !== key);
+    } else {
+      updatedChapters.push(key);
+    }
+    setReadChapters(updatedChapters);
+    try {
+      localStorage.setItem('bible_read_chapters', JSON.stringify(updatedChapters));
+      // Dispatch storage event to notify other tabs/components of storage update
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+  };
+
   const toggleDayCompletion = (dayNum: number) => {
+    const dayData = activePlanDays.find((d) => d.day === dayNum);
+    if (!dayData) return;
+
+    const isCurrentlyDone = isDayCompletedByReadChapters(dayData);
+    let updatedChapters = [...readChapters];
+
+    // If day is checked/unchecked, toggle all passages inside it
+    dayData.passages.forEach((p) => {
+      for (let ch = p.startChapter; ch <= p.endChapter; ch++) {
+        const key = `${p.bookId}_${ch}`;
+        if (isCurrentlyDone) {
+          updatedChapters = updatedChapters.filter((k) => k !== key);
+        } else {
+          if (!updatedChapters.includes(key)) {
+            updatedChapters.push(key);
+          }
+        }
+      }
+    });
+
+    setReadChapters(updatedChapters);
+    try {
+      localStorage.setItem('bible_read_chapters', JSON.stringify(updatedChapters));
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+
     let updatedDays = [...settings.completedDays];
-    if (updatedDays.includes(dayNum)) {
+    if (isCurrentlyDone) {
       updatedDays = updatedDays.filter((d) => d !== dayNum);
     } else {
-      updatedDays.push(dayNum);
+      if (!updatedDays.includes(dayNum)) updatedDays.push(dayNum);
     }
     const streak = updatedDays.length > 0 ? settings.streakCount + 1 : 0;
     onUpdateSettings({
@@ -257,12 +333,12 @@ export const PlanModal: React.FC<Props> = ({
               <div className="space-y-2">
                 {activePlanDays.map((dayData) => {
                   const dayNum = dayData.day;
-                  const isDone = settings.completedDays.includes(dayNum);
+                  const isDone = isDayCompletedByReadChapters(dayData);
 
                   return (
                     <div
                       key={dayNum}
-                      className={`flex items-center justify-between p-2.5 sm:p-3.5 gap-2 rounded-xl border transition-all ${
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-2.5 sm:p-3.5 gap-2 rounded-xl border transition-all ${
                         isDone
                           ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800'
                           : 'bg-white dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700/80 hover:border-amber-400'
@@ -289,50 +365,31 @@ export const PlanModal: React.FC<Props> = ({
                               {dayData.title}
                             </span>
                           </div>
-                          {(() => {
-                            const passageStr = dayData.passages
-                              .map((p) => (p.startChapter === p.endChapter ? `${p.bookName} ${p.startChapter}장` : `${p.bookName} ${p.startChapter}~${p.endChapter}장`))
-                              .join(', ');
-                            if (!dayData.title.includes(passageStr)) {
-                              return (
-                                <div className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 font-medium leading-snug truncate">
-                                  {passageStr}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1 shrink-0">
-                        {dayData.passages.length > 1 ? (
-                          dayData.passages.map((p, idx) => (
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0 pl-7 sm:pl-0">
+                        {dayData.passages.map((p, idx) => {
+                          const isPassageRead = isChapterReadInPassage(p.bookId, p.startChapter);
+                          return (
                             <button
                               key={idx}
                               onClick={() => {
                                 onSelectPassage(p.bookId, p.startChapter);
                                 onClose();
                               }}
-                              className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 text-[11px] font-bold transition-colors cursor-pointer border border-amber-500/30 whitespace-nowrap"
+                              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border flex items-center gap-1 whitespace-nowrap active:scale-95 ${
+                                isPassageRead
+                                  ? 'bg-amber-500/20 text-amber-900 dark:text-amber-200 border-amber-500/40 shadow-xs'
+                                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/20'
+                              }`}
                               title={`${p.bookName} ${p.startChapter}장으로 이동`}
                             >
-                              {p.bookName} {p.startChapter}장
+                              <span>{p.bookName} {p.startChapter}장</span>
+                              {isPassageRead && <Check className="w-3 h-3 text-amber-600 dark:text-amber-400 stroke-[3]" />}
                             </button>
-                          ))
-                        ) : (
-                          <button
-                            onClick={() => {
-                              const p = dayData.passages[0];
-                              onSelectPassage(p.bookId, p.startChapter);
-                              onClose();
-                            }}
-                            className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 transition-colors shrink-0 whitespace-nowrap cursor-pointer"
-                          >
-                            <span>읽으러 가기</span>
-                            <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-                          </button>
-                        )}
+                          );
+                        })}
                       </div>
                     </div>
                   );

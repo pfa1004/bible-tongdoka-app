@@ -139,6 +139,9 @@ export interface VerseCardConfig {
   overlayOpacity: number;
   showSignature: boolean;
   signatureText: string;
+  cardSize?: '1800x700' | '1800x2000' | '1800x4000';
+  textPositionX?: number; // 0~1 비율 (0=좌, 0.5=중앙, 1=우)
+  textPositionY?: number; // 0~1 비율 (0=상, 0.5=중앙, 1=하)
 }
 
 export interface UserHighlight {
@@ -180,7 +183,7 @@ export interface ReaderSettings {
   fontFamily: 'sans' | 'serif' | 'handwriting';
   showVerseNumbers: boolean;
   paragraphMode: boolean;
-  copyFormat: 'standard' | 'bullet' | 'clean';
+  copyFormat: 'verse_break' | 'continuous' | 'with_ref';
 }
 
 export interface AudioPlayerState {
